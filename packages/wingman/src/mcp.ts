@@ -98,42 +98,46 @@ async function loadPluginServers(): Promise<{
     const plugins = await readdir(catalogPath).catch(() => []);
 
     for (const plugin of plugins) {
-      const pluginPath = join(catalogPath, plugin);
-      const pluginJsonPath = join(pluginPath, 'plugin.json');
+      try {
+        const pluginPath = join(catalogPath, plugin);
+        const pluginJsonPath = join(pluginPath, 'plugin.json');
 
-      const pluginJson = await readJson<{
-        mcpServers?: Record<string, MCPServerConfig> | string;
-        skills?: string;
-        agents?: string;
-      }>(pluginJsonPath);
+        const pluginJson = await readJson<{
+          mcpServers?: Record<string, MCPServerConfig> | string;
+          skills?: string;
+          agents?: string;
+        }>(pluginJsonPath);
 
-      if (!pluginJson) continue;
+        if (!pluginJson) continue;
 
-      // MCP servers — can be inline object or path to external JSON
-      if (pluginJson.mcpServers) {
-        let pluginServers: Record<string, MCPServerConfig> = {};
+        // MCP servers — can be inline object or path to external JSON
+        if (pluginJson.mcpServers) {
+          let pluginServers: Record<string, MCPServerConfig> = {};
 
-        if (typeof pluginJson.mcpServers === 'string') {
-          // External file reference
-          const externalPath = join(pluginPath, pluginJson.mcpServers);
-          const external = await readJson<Record<string, MCPServerConfig>>(externalPath);
-          if (external) pluginServers = external;
-        } else {
-          pluginServers = pluginJson.mcpServers;
+          if (typeof pluginJson.mcpServers === 'string') {
+            // External file reference
+            const externalPath = join(pluginPath, pluginJson.mcpServers);
+            const external = await readJson<Record<string, MCPServerConfig>>(externalPath);
+            if (external) pluginServers = external;
+          } else if (typeof pluginJson.mcpServers === 'object' && pluginJson.mcpServers !== null) {
+            pluginServers = pluginJson.mcpServers;
+          }
+
+          for (const [name, config] of Object.entries(pluginServers)) {
+            servers[name] = config;
+            diagnostics.push(`  ✅ ${name} ← plugin (${catalog}/${plugin})`);
+          }
         }
 
-        for (const [name, config] of Object.entries(pluginServers)) {
-          servers[name] = config;
-          diagnostics.push(`  ✅ ${name} ← plugin (${catalog}/${plugin})`);
+        // Skills directory
+        if (pluginJson.skills) {
+          const skillsDir = join(pluginPath, pluginJson.skills);
+          if (await exists(skillsDir)) {
+            skills.push(skillsDir);
+          }
         }
-      }
-
-      // Skills directory
-      if (pluginJson.skills) {
-        const skillsDir = join(pluginPath, pluginJson.skills);
-        if (await exists(skillsDir)) {
-          skills.push(skillsDir);
-        }
+      } catch (err) {
+        diagnostics.push(`  ⚠️ ${catalog}/${plugin} — failed to load: ${(err as Error).message}`);
       }
     }
   }
