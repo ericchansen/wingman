@@ -17,8 +17,25 @@ import { resolveConfig } from './config.js';
 import { discoverWithDiagnostics } from './mcp.js';
 import { initTelemetry, shutdownTelemetry } from './instrumentation.js';
 
-import type { Application } from 'express';
+import type { Application, Request, Response } from 'express';
 import type { Server } from 'node:http';
+
+// ---------------------------------------------------------------------------
+// Validation helpers
+// ---------------------------------------------------------------------------
+
+const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
+
+function validateSessionId(req: Request, res: Response): string | null {
+  const { sessionId } = req.params;
+  if (!SESSION_ID_PATTERN.test(sessionId)) {
+    res.status(400).json({ error: 'Invalid session ID format' });
+    return null;
+  }
+  return sessionId;
+}
+
+const MAX_MESSAGE_LENGTH = 100_000;
 
 export interface CreateServerOptions {
   config?: WingmanConfig;
@@ -41,7 +58,7 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
   const client = new WingmanClient({ config });
   const app = express();
 
-  app.use(express.json());
+  app.use(express.json({ limit: '1mb' }));
 
   // CORS
   if (config.server.cors) {
@@ -97,7 +114,8 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
 
   // Switch model for a session
   app.post('/api/session/:sessionId/model', async (req, res) => {
-    const { sessionId } = req.params;
+    const sessionId = validateSessionId(req, res);
+    if (!sessionId) return;
     const { model } = req.body as { model?: string };
 
     if (!model || typeof model !== 'string') {
@@ -117,8 +135,11 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
 
   // Get current mode for a session
   app.get('/api/session/:sessionId/mode', async (req, res) => {
+    const sessionId = validateSessionId(req, res);
+    if (!sessionId) return;
+
     try {
-      const mode = await client.getMode(req.params.sessionId);
+      const mode = await client.getMode(sessionId);
       res.json({ mode });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -129,7 +150,8 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
 
   // Set mode for a session
   app.post('/api/session/:sessionId/mode', async (req, res) => {
-    const { sessionId } = req.params;
+    const sessionId = validateSessionId(req, res);
+    if (!sessionId) return;
     const { mode } = req.body as { mode?: string };
 
     if (!mode || typeof mode !== 'string') {
@@ -175,8 +197,16 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
       res.status(400).json({ error: 'message is required' });
       return;
     }
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      res.status(400).json({ error: `Message too long (max ${MAX_MESSAGE_LENGTH} characters)` });
+      return;
+    }
     if (sessionId !== undefined && typeof sessionId !== 'string') {
       res.status(400).json({ error: 'sessionId must be a string' });
+      return;
+    }
+    if (sessionId !== undefined && !SESSION_ID_PATTERN.test(sessionId)) {
+      res.status(400).json({ error: 'Invalid session ID format' });
       return;
     }
 
