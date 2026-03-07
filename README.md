@@ -3,9 +3,8 @@
 The open-source chat app for the [GitHub Copilot SDK](https://github.com/features/copilot).
 
 ```bash
-npx create-wingman-chat-app my-chat
-cd my-chat
-npm run dev
+git clone https://github.com/ericchansen/wingman.git
+cd wingman && pnpm install && pnpm dev
 ```
 
 **One command → full-featured chat.** MCP servers auto-discovered, skills loaded, all 51 SDK event types handled, model switching, mode control, abort support — everything works out of the box.
@@ -61,16 +60,18 @@ export default defineConfig({
 
 ### Prerequisites
 
-- Node.js 18+
-- GitHub Copilot CLI (`copilot` command available)
+- Node.js 20.11+
+- GitHub Copilot CLI (optional — enables plugin-based MCP server discovery)
 
 ### Create a new app
 
+> **Note:** `create-wingman-chat-app` is not yet implemented. For now, clone the repo directly:
+
 ```bash
-npx create-wingman-chat-app my-chat
-cd my-chat
-npm install
-npm run dev
+git clone https://github.com/ericchansen/wingman.git
+cd wingman
+pnpm install
+pnpm dev
 ```
 
 Open `http://localhost:3000` — you have a working chat.
@@ -129,10 +130,12 @@ export default defineConfig({
 });
 ```
 
+> **Security note:** CORS is enabled by default (`cors: true`) with `Access-Control-Allow-Origin: *`. This is fine for local development but should be restricted or disabled for production deployments with authentication.
+
 ## Architecture
 
 ```
-React SPA (Vite) ──→ Socket.IO ──→ Express Server ──→ WingmanClient ──→ MCP Servers
+React SPA (Vite) ──→ SSE ──→ Express Server ──→ WingmanClient ──→ MCP Servers
                                                            │
                                                     CopilotClient
                                                      (SDK core)
