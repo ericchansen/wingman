@@ -6,7 +6,7 @@
  */
 
 import { CopilotClient, approveAll, type SessionEvent, type MCPServerConfig as SDKMCPServerConfig } from '@github/copilot-sdk';
-import type { WingmanConfig } from './types.js';
+import type { WingmanConfig, AgentMode } from './types.js';
 import { resolveConfig } from './config.js';
 import { discoverMCPServers } from './mcp.js';
 import { EventRouter, type EventCallbacks } from './events.js';
@@ -182,48 +182,38 @@ export class WingmanClient {
   /** List available models from the SDK. */
   async listModels(): Promise<Array<{ id: string; name: string }>> {
     const client = this.getClient();
-    try {
-      const result = await client.rpc.models.list();
-      return result.models.map((m) => ({
-        id: m.id,
-        name: m.id,
-      }));
-    } catch {
-      return [];
-    }
+    const result = await client.rpc.models.list();
+    return result.models.map((m) => ({
+      id: m.id,
+      name: m.id,
+    }));
   }
 
   /** Switch the model for an active session. */
   async switchModel(sessionId: string, modelId: string): Promise<void> {
-    const cached = sessionCache.get(sessionId);
-    if (!cached) throw new Error(`No session found with id: ${sessionId}`);
-    await cached.session.rpc.model.switchTo({ modelId });
+    const session = await this.getSession(sessionId);
+    await session.rpc.model.switchTo({ modelId });
   }
 
   /** Get the current agent mode for a session. */
   async getMode(sessionId: string): Promise<string> {
-    const cached = sessionCache.get(sessionId);
-    if (!cached) throw new Error(`No session found with id: ${sessionId}`);
-    const result = await cached.session.rpc.mode.get();
+    const session = await this.getSession(sessionId);
+    const result = await session.rpc.mode.get();
     return result.mode;
   }
 
-  /** Set the agent mode for a session (e.g. 'interactive', 'plan', 'autopilot'). */
-  async setMode(sessionId: string, mode: string): Promise<void> {
-    const cached = sessionCache.get(sessionId);
-    if (!cached) throw new Error(`No session found with id: ${sessionId}`);
-    await cached.session.rpc.mode.set({ mode: mode as 'interactive' | 'plan' | 'autopilot' });
+  /** Set the agent mode for a session. */
+  async setMode(sessionId: string, mode: AgentMode): Promise<void> {
+    const session = await this.getSession(sessionId);
+    await session.rpc.mode.set({ mode });
   }
 
   /** Get account quota information. */
   async getQuota(): Promise<Record<string, unknown> | null> {
     const client = this.getClient();
-    try {
-      const result = await client.rpc.account.getQuota();
-      return result.quotaSnapshots as unknown as Record<string, unknown>;
-    } catch {
-      return null;
-    }
+    const result = await client.rpc.account.getQuota();
+    const quotaSnapshots = result?.quotaSnapshots;
+    return quotaSnapshots != null ? (quotaSnapshots as unknown as Record<string, unknown>) : null;
   }
 }
 
