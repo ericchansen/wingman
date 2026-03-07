@@ -15,6 +15,7 @@ import { WingmanClient } from './client.js';
 import type { WingmanConfig } from './types.js';
 import { resolveConfig } from './config.js';
 import { discoverWithDiagnostics } from './mcp.js';
+import { initTelemetry, shutdownTelemetry } from './instrumentation.js';
 
 import type { Application } from 'express';
 import type { Server } from 'node:http';
@@ -213,6 +214,9 @@ export async function startServer(options: CreateServerOptions = {}): Promise<Ru
   const { app, client, config } = createServer(options);
   const port = config.server.port;
 
+  // Initialize OTel tracing before anything else
+  await initTelemetry(config.telemetry);
+
   // Log MCP discovery
   const discovery = await discoverWithDiagnostics(config.mcpServers);
   for (const line of discovery.diagnostics) {
@@ -228,6 +232,7 @@ export async function startServer(options: CreateServerOptions = {}): Promise<Ru
     console.log('\nShutting down...');
     server.close();
     await client.stop();
+    await shutdownTelemetry();
     process.exit(0);
   };
 

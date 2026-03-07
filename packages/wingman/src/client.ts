@@ -10,6 +10,7 @@ import type { WingmanConfig } from './types.js';
 import { resolveConfig } from './config.js';
 import { discoverMCPServers } from './mcp.js';
 import { EventRouter, type EventCallbacks } from './events.js';
+import { createTracer } from './telemetry.js';
 
 // ---------------------------------------------------------------------------
 // Session cache — prevents duplicate events on resume
@@ -39,9 +40,11 @@ export interface WingmanClientOptions {
 export class WingmanClient {
   private client: CopilotClient | null = null;
   private config: Required<WingmanConfig>;
+  private telemetry: ReturnType<typeof createTracer>;
 
   constructor(options: WingmanClientOptions = {}) {
     this.config = resolveConfig(options.config ?? {});
+    this.telemetry = createTracer(this.config.telemetry);
   }
 
   /** Lazily initialize the CopilotClient singleton. */
@@ -115,8 +118,14 @@ export class WingmanClient {
       cached.unsubscribe = null;
     }
 
-    // Wire up event router
-    const router = new EventRouter(callbacks);
+    // Create telemetry callbacks for this turn
+    const telemetryCallbacks = this.telemetry.createCallbacks(sid, this.config.model);
+
+    // Compose user callbacks with telemetry callbacks
+    const composedCallbacks = composeCallbacks(callbacks, telemetryCallbacks);
+
+    // Wire up event router with composed callbacks
+    const router = new EventRouter(composedCallbacks);
     const unsubscribe = session.on((event: SessionEvent) => {
       router.route(event);
     });
@@ -165,4 +174,41 @@ export class WingmanClient {
   getConfig(): Required<WingmanConfig> {
     return this.config;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Callback composition — merges user + telemetry callbacks
+// ---------------------------------------------------------------------------
+
+/**
+ * Compose two sets of EventCallbacks so both fire for each event.
+ * The primary callbacks fire first, then secondary (telemetry).
+ */
+function composeCallbacks(
+  primary: Partial<EventCallbacks>,
+  secondary: Partial<EventCallbacks>,
+): EventCallbacks {
+  const composed: Record<string, (...args: unknown[]) => void> = {};
+
+  // Collect all unique callback keys from both sets
+  const allKeys = new Set([
+    ...Object.keys(primary),
+    ...Object.keys(secondary),
+  ]);
+
+  for (const key of allKeys) {
+    const pFn = (primary as Record<string, unknown>)[key] as ((...args: unknown[]) => void) | undefined;
+    const sFn = (secondary as Record<string, unknown>)[key] as ((...args: unknown[]) => void) | undefined;
+
+    if (pFn && sFn) {
+      composed[key] = (...args: unknown[]) => {
+        pFn(...args);
+        sFn(...args);
+      };
+    } else {
+      composed[key] = (pFn ?? sFn)!;
+    }
+  }
+
+  return composed as unknown as EventCallbacks;
 }
