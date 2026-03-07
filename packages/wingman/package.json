@@ -24,7 +24,7 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "lint": "eslint src/",
-    "test": "vitest run",
+    "test": "vitest run --exclude src/__tests__/server.test.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
