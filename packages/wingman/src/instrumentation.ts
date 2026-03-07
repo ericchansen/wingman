@@ -15,7 +15,7 @@
  *   OTEL_SERVICE_NAME                    — service.name resource attribute
  *
  * Usage:
- *   import { initTelemetry } from 'wingman';
+ *   import { initTelemetry } from '@wingman-chat/core';
  *   await initTelemetry({ enabled: true, exporter: 'console' });
  */
 

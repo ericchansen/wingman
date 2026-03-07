@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useReducer, useCallback, useRef, type ReactNode } from 'react';
-import type { ChatMessage, ToolExecution, UsageData } from 'wingman';
+import type { ChatMessage, ToolExecution, UsageData } from '@wingman-chat/core';
 import { ThemeProvider, type WingmanTheme, type WingmanThemeColors } from './theme-provider.js';
 
 // ---------------------------------------------------------------------------

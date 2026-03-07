@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import type { ToolExecution } from 'wingman';
+import type { ToolExecution } from '@wingman-chat/core';
 
 export interface ToolStatusProps {
   tool: ToolExecution;
