@@ -32,17 +32,18 @@ export { EVENT_CATEGORIES } from './types.js';
 // Config
 export { defineConfig, resolveConfig, DEFAULT_CONFIG } from './config.js';
 
-// Client (to be implemented)
-// export { WingmanClient } from './client.js';
+// Client
+export { WingmanClient } from './client.js';
+export type { WingmanClientOptions, SendMessageOptions } from './client.js';
 
-// Session (to be implemented)
-// export { SessionManager } from './session.js';
+// Events
+export { EventRouter } from './events.js';
+export type { EventCallbacks } from './events.js';
 
-// Events (to be implemented)
-// export { EventRouter } from './events.js';
+// MCP
+export { discoverMCPServers, discoverWithDiagnostics } from './mcp.js';
+export type { DiscoveryResult } from './mcp.js';
 
-// MCP (to be implemented)
-// export { MCPDiscovery } from './mcp.js';
-
-// Server (to be implemented)
-// export { createServer } from './server.js';
+// Server
+export { createServer, startServer } from './server.js';
+export type { CreateServerOptions, ServerInstance, RunningServerInstance } from './server.js';

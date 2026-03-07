@@ -1,0 +1,238 @@
+/**
+ * Wingman Express Server — SSE streaming endpoint for the chat UI.
+ *
+ * Provides:
+ * - POST /api/chat — SSE streaming chat endpoint
+ * - GET /api/health — Health check
+ * - Static file serving for the React frontend
+ *
+ * SSE is the Phase 0 transport. Socket.IO upgrade happens in Phase 2.
+ */
+
+import express from 'express';
+import { resolve } from 'node:path';
+import { WingmanClient } from './client.js';
+import type { WingmanConfig } from './types.js';
+import { resolveConfig } from './config.js';
+import { discoverWithDiagnostics } from './mcp.js';
+
+import type { Application } from 'express';
+import type { Server } from 'node:http';
+
+export interface CreateServerOptions {
+  config?: WingmanConfig;
+  /** Absolute path to the built React frontend (dist/client). */
+  staticDir?: string;
+}
+
+export interface ServerInstance {
+  app: Application;
+  client: WingmanClient;
+  config: Required<WingmanConfig>;
+}
+
+export interface RunningServerInstance extends ServerInstance {
+  server: Server;
+}
+
+export function createServer(options: CreateServerOptions = {}): ServerInstance {
+  const config = resolveConfig(options.config ?? {});
+  const client = new WingmanClient({ config });
+  const app = express();
+
+  app.use(express.json());
+
+  // CORS
+  if (config.server.cors) {
+    app.use((_req, res, next) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      if (_req.method === 'OPTIONS') {
+        res.sendStatus(204);
+        return;
+      }
+      next();
+    });
+  }
+
+  // Health check
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', version: '0.1.0' });
+  });
+
+  // MCP discovery info
+  app.get('/api/mcp', async (_req, res) => {
+    try {
+      const discovery = await discoverWithDiagnostics(config.mcpServers);
+      res.json({
+        servers: Object.keys(discovery.servers),
+        sources: Object.fromEntries(discovery.sources),
+        diagnostics: discovery.diagnostics,
+      });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // UI config (for React frontend)
+  app.get('/api/config', (_req, res) => {
+    res.json(config.ui);
+  });
+
+  // Chat SSE endpoint
+  app.post('/api/chat', async (req, res) => {
+    const { message, sessionId } = req.body as {
+      message?: string;
+      sessionId?: string;
+    };
+
+    // Input validation
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      res.status(400).json({ error: 'message is required' });
+      return;
+    }
+    if (sessionId !== undefined && typeof sessionId !== 'string') {
+      res.status(400).json({ error: 'sessionId must be a string' });
+      return;
+    }
+
+    // SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    // Disable Nagle's algorithm for immediate delivery
+    if (res.socket) {
+      res.socket.setNoDelay(true);
+    }
+
+    // Track client disconnection — use res.on('close'), NOT req.on('close')
+    let closed = false;
+    res.on('close', () => {
+      closed = true;
+    });
+
+    // SSE send helper
+    const send = (event: string, data: Record<string, unknown>) => {
+      if (closed) return;
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // Request timeout: must exceed SDK's 300s so SDK error fires first
+    const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT ?? '330000', 10);
+    const timeout = setTimeout(() => {
+      if (!closed) {
+        send('error', { message: 'Request timeout exceeded' });
+        res.end();
+      }
+    }, REQUEST_TIMEOUT);
+
+    // Keepalive pings to prevent browser/proxy timeout
+    const keepalive = setInterval(() => {
+      if (!closed) {
+        res.write(`: keepalive\n\n`);
+      }
+    }, 5000);
+
+    // Send initial heartbeat
+    send('heartbeat', { status: 'connected' });
+
+    try {
+      const resultSessionId = await client.sendMessage(
+        sessionId,
+        message.trim(),
+        {
+          onDelta: (content) => send('delta', { content }),
+          onReasoningDelta: (content, reasoningId) =>
+            send('reasoning_delta', { content, reasoningId }),
+          onReasoning: (content, reasoningId) =>
+            send('reasoning', { content, reasoningId }),
+          onUsage: (usage) => send('usage', usage as unknown as Record<string, unknown>),
+          onTurnStart: (turnId) => send('turn_start', { turnId }),
+          onTurnEnd: (turnId) => send('turn_end', { turnId }),
+          onIntent: (intent) => send('intent', { intent }),
+          onToolStart: (tool) => send('tool_start', tool),
+          onToolComplete: (toolCallId, toolName, result) =>
+            send('tool_complete', { toolCallId, toolName, result }),
+          onToolProgress: (toolCallId, message) =>
+            send('tool_progress', { toolCallId, message }),
+          onSkillInvoked: (name, pluginName) =>
+            send('skill_invoked', { name, pluginName }),
+          onSubagentStarted: (toolCallId, name, displayName) =>
+            send('subagent_started', { toolCallId, name, displayName }),
+          onSubagentCompleted: (toolCallId, name) =>
+            send('subagent_completed', { toolCallId, name }),
+          onSubagentFailed: (toolCallId, name, error) =>
+            send('subagent_failed', { toolCallId, name, error }),
+          onError: (message) => send('error', { message }),
+          onInfo: (infoType, message) => send('info', { infoType, message }),
+          onWarning: (warningType, message) =>
+            send('warning', { warningType, message }),
+          onModelChange: (model) => send('model_change', { model }),
+          onTitleChanged: (title) => send('title_changed', { title }),
+          onModeChanged: (mode) => send('mode_changed', { mode }),
+          onTruncation: (data) => send('truncation', data),
+          onCompactionStart: () => send('compaction_start', {}),
+          onCompactionComplete: () => send('compaction_complete', {}),
+        },
+      );
+
+      if (!closed) {
+        send('done', { sessionId: resultSessionId });
+        res.end();
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (!closed) {
+        send('error', { message: errMsg });
+        res.end();
+      }
+    } finally {
+      clearInterval(keepalive);
+      clearTimeout(timeout);
+    }
+  });
+
+  // Serve static React frontend if staticDir provided
+  if (options.staticDir) {
+    app.use(express.static(resolve(options.staticDir)));
+    // SPA fallback — serve index.html for all non-API routes
+    app.get('*', (_req, res) => {
+      res.sendFile(resolve(options.staticDir!, 'index.html'));
+    });
+  }
+
+  return { app, client, config };
+}
+
+/** Start the server and listen on the configured port. */
+export async function startServer(options: CreateServerOptions = {}): Promise<RunningServerInstance> {
+  const { app, client, config } = createServer(options);
+  const port = config.server.port;
+
+  // Log MCP discovery
+  const discovery = await discoverWithDiagnostics(config.mcpServers);
+  for (const line of discovery.diagnostics) {
+    console.log(line);
+  }
+
+  const server = app.listen(port, () => {
+    console.log(`\n🛩️  Wingman running at http://localhost:${port}\n`);
+  });
+
+  // Graceful shutdown
+  const shutdown = async () => {
+    console.log('\nShutting down...');
+    server.close();
+    await client.stop();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+
+  return { server, app, client, config };
+}
