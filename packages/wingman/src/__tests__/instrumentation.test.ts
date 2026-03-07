@@ -139,13 +139,25 @@ describe('HTTP and Express auto-instrumentation', () => {
     ).resolves.not.toThrow();
   });
 
-  it('auto-instrumentation is included in both console and OTLP exporter modes', async () => {
+  it('registers auto-instrumentation during console exporter init', async () => {
     const consoleSpy = vi.spyOn(console, 'log');
 
     await initTelemetry({ enabled: true, exporter: 'console' });
     expect(consoleSpy).toHaveBeenCalledWith('📡 OTel tracing → console');
 
     consoleSpy.mockRestore();
+  });
+
+  it('produces spans through the OTel pipeline after init', async () => {
+    await initTelemetry({ enabled: true, exporter: 'console' });
+
+    // Verify the global tracer is functional — creating a span should not throw
+    const { trace } = await import('@opentelemetry/api');
+    const tracer = trace.getTracer('test');
+    const span = tracer.startSpan('test-span');
+    expect(span).toBeDefined();
+    expect(typeof span.end).toBe('function');
+    span.end();
   });
 
   it('is still idempotent after adding auto-instrumentation', async () => {

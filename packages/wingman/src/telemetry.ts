@@ -329,7 +329,7 @@ export class WingmanTracer {
         span.recordException(error);
         span.addEvent('mcp.auth_error', {
           [ATTR.MCP_SERVER_NAME]: serverName,
-          [ATTR.EXCEPTION_TYPE]: error.constructor.name,
+          [ATTR.EXCEPTION_TYPE]: error.name || error.constructor.name,
           [ATTR.EXCEPTION_MESSAGE]: error.message,
         });
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });

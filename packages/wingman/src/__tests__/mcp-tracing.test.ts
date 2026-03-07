@@ -80,7 +80,7 @@ describe('discoverWithDiagnostics with OTel tracing', () => {
 });
 
 describe('MCP discovery span error handling', () => {
-  it('propagates errors from stages correctly', async () => {
+  it('returns built-in defaults even when a stage fails (e.g. global config read error)', async () => {
     const { readFile } = await import('node:fs/promises');
     vi.mocked(readFile).mockRejectedValue(new Error('disk read error'));
 
