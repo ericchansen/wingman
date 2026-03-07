@@ -1,15 +1,19 @@
 {
-  "name": "create-wingman-app",
+  "name": "create-wingman-chat-app",
   "version": "0.1.0",
   "description": "Create a new Wingman chat app",
   "type": "module",
   "bin": {
-    "create-wingman-app": "./dist/index.js"
+    "create-wingman-chat-app": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "copilot",

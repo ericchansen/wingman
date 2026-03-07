@@ -1,5 +1,5 @@
 {
-  "name": "wingman",
+  "name": "@wingman-chat/core",
   "version": "0.1.0",
   "description": "The open-source chat app for the GitHub Copilot SDK",
   "type": "module",
@@ -24,7 +24,8 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "lint": "eslint src/",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "copilot",
@@ -37,6 +38,9 @@
   ],
   "author": "Eric Hansen",
   "license": "MIT",
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=20.11.0"
   },

@@ -3,7 +3,7 @@
 The open-source chat app for the [GitHub Copilot SDK](https://github.com/features/copilot).
 
 ```bash
-npx create-wingman-app my-chat
+npx create-wingman-chat-app my-chat
 cd my-chat
 npm run dev
 ```
@@ -35,7 +35,7 @@ Out of the box, Wingman is intentionally boring — a clean, generic chat interf
 
 ```typescript
 // wingman.config.ts
-import { defineConfig } from 'wingman/config';
+import { defineConfig } from '@wingman-chat/core/config';
 
 export default defineConfig({
   systemPrompt: 'You are a sales intelligence assistant named Clippy...',
@@ -53,9 +53,9 @@ export default defineConfig({
 
 | Package | npm | Description |
 |---------|-----|-------------|
-| `wingman` | [![npm](https://img.shields.io/npm/v/wingman)](https://npmjs.com/package/wingman) | Core SDK wrapper, session management, MCP discovery, Express server |
-| `@wingman/react` | [![npm](https://img.shields.io/npm/v/@wingman/react)](https://npmjs.com/package/@wingman/react) | React 19 hooks + shadcn/ui components |
-| `create-wingman-app` | [![npm](https://img.shields.io/npm/v/create-wingman-app)](https://npmjs.com/package/create-wingman-app) | Project scaffolding CLI |
+| `@wingman-chat/core` | [![npm](https://img.shields.io/npm/v/@wingman-chat/core)](https://npmjs.com/package/@wingman-chat/core) | Core SDK wrapper, session management, MCP discovery, Express server |
+| `@wingman-chat/react` | [![npm](https://img.shields.io/npm/v/@wingman-chat/react)](https://npmjs.com/package/@wingman-chat/react) | React 19 hooks + shadcn/ui components |
+| `create-wingman-chat-app` | [![npm](https://img.shields.io/npm/v/create-wingman-chat-app)](https://npmjs.com/package/create-wingman-chat-app) | Project scaffolding CLI |
 
 ## Quick Start
 
@@ -67,7 +67,7 @@ export default defineConfig({
 ### Create a new app
 
 ```bash
-npx create-wingman-app my-chat
+npx create-wingman-chat-app my-chat
 cd my-chat
 npm install
 npm run dev
@@ -91,7 +91,7 @@ Restart your app — the new tools appear automatically.
 Everything is controlled via `wingman.config.ts`:
 
 ```typescript
-import { defineConfig } from 'wingman/config';
+import { defineConfig } from '@wingman-chat/core/config';
 
 export default defineConfig({
   // Agent behavior
