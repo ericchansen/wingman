@@ -63,6 +63,7 @@ export function ChatInput({
         <button
           onClick={handleSubmit}
           disabled={!value.trim() || state.isStreaming}
+          type="button"
           className="wingman-chat-input-button"
           aria-label="Send message"
         >

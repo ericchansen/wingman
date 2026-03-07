@@ -43,6 +43,7 @@ export function WelcomeScreen({
           {suggestions.map((suggestion, i) => (
             <button
               key={i}
+              type="button"
               className="wingman-welcome-suggestion"
               onClick={() => onSuggestionClick?.(suggestion)}
             >

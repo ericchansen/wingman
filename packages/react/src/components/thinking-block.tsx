@@ -23,6 +23,7 @@ export function ThinkingBlock({
     <div className={`wingman-thinking ${className}`}>
       <button
         className="wingman-thinking-toggle"
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
       >
