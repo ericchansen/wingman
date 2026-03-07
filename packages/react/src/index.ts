@@ -5,9 +5,17 @@
  * on top of the GitHub Copilot SDK via Wingman.
  */
 
-// Provider + hook
+// Provider + hooks
 export { ChatProvider, useChat } from './providers/chat-provider.js';
 export type { ChatProviderProps, ChatState, ChatContextValue } from './providers/chat-provider.js';
+
+export { ThemeProvider, useTheme } from './providers/theme-provider.js';
+export type {
+  ThemeProviderProps,
+  ThemeContextValue,
+  WingmanTheme,
+  WingmanThemeColors,
+} from './providers/theme-provider.js';
 
 // Components
 export { ChatMessage } from './components/chat-message.js';
@@ -28,7 +36,7 @@ export type { MarkdownRendererProps } from './components/markdown-renderer.js';
 export { WelcomeScreen } from './components/welcome-screen.js';
 export type { WelcomeScreenProps } from './components/welcome-screen.js';
 
-// Phase 1 components (placeholders)
+// Phase 2 components (placeholders)
 // export { ModelPicker } from './components/model-picker.js';
 // export { ModeSwitcher } from './components/mode-switcher.js';
 // export { TokenUsage } from './components/token-usage.js';

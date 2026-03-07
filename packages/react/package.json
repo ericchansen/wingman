@@ -9,8 +9,14 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    }
+    },
+    "./styles": "./src/styles/wingman.css",
+    "./styles/wingman.css": "./src/styles/wingman.css"
   },
+  "files": [
+    "dist",
+    "src/styles"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
