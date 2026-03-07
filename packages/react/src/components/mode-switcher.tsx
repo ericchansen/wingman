@@ -54,22 +54,26 @@ export function ModeSwitcher({
   };
 
   return (
-    <div className={`wingman-mode-switcher ${className}`} role="radiogroup" aria-label="Agent mode">
+    <fieldset className={`wingman-mode-switcher ${className}`} aria-label="Agent mode">
+      <legend className="wingman-mode-switcher-legend">Mode</legend>
       {MODES.map((m) => (
-        <button
+        <label
           key={m.id}
-          type="button"
-          role="radio"
-          aria-checked={currentMode === m.id}
           className={`wingman-mode-switcher-option ${currentMode === m.id ? 'wingman-mode-switcher-active' : ''}`}
-          onClick={() => handleSwitch(m.id)}
-          disabled={loading || !sessionId}
-          title={m.label}
         >
+          <input
+            type="radio"
+            name="wingman-mode"
+            value={m.id}
+            checked={currentMode === m.id}
+            onChange={() => handleSwitch(m.id)}
+            disabled={loading || !sessionId}
+            className="wingman-mode-switcher-radio"
+          />
           <span className="wingman-mode-switcher-icon">{m.icon}</span>
           <span className="wingman-mode-switcher-label">{m.label}</span>
-        </button>
+        </label>
       ))}
-    </div>
+    </fieldset>
   );
 }

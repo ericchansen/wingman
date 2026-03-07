@@ -109,7 +109,9 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
       await client.switchModel(sessionId, model);
       res.json({ ok: true, model });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = msg.includes('No session found') ? 404 : 500;
+      res.status(status).json({ error: msg });
     }
   });
 
@@ -119,7 +121,9 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
       const mode = await client.getMode(req.params.sessionId);
       res.json({ mode });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = msg.includes('No session found') ? 404 : 500;
+      res.status(status).json({ error: msg });
     }
   });
 
@@ -133,11 +137,19 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
       return;
     }
 
+    const allowedModes = ['interactive', 'plan', 'autopilot'] as const;
+    if (!allowedModes.includes(mode as (typeof allowedModes)[number])) {
+      res.status(400).json({ error: 'invalid mode', allowedModes });
+      return;
+    }
+
     try {
-      await client.setMode(sessionId, mode);
+      await client.setMode(sessionId, mode as (typeof allowedModes)[number]);
       res.json({ ok: true, mode });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = msg.includes('No session found') ? 404 : 500;
+      res.status(status).json({ error: msg });
     }
   });
 

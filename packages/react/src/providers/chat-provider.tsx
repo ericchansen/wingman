@@ -368,9 +368,12 @@ export function ChatProvider({ children, apiUrl = '', theme, colors, className }
         });
         if (res.ok) {
           dispatch({ type: 'SET_MODEL', model });
+        } else {
+          const data = await res.json().catch(() => ({}));
+          dispatch({ type: 'SET_ERROR', message: data.error ?? `Failed to switch model (${res.status})` });
         }
-      } catch {
-        /* silently fail */
+      } catch (err) {
+        dispatch({ type: 'SET_ERROR', message: err instanceof Error ? err.message : 'Failed to switch model' });
       }
     },
     [apiUrl, state.sessionId],
@@ -387,9 +390,12 @@ export function ChatProvider({ children, apiUrl = '', theme, colors, className }
         });
         if (res.ok) {
           dispatch({ type: 'SET_MODE', mode });
+        } else {
+          const data = await res.json().catch(() => ({}));
+          dispatch({ type: 'SET_ERROR', message: data.error ?? `Failed to set mode (${res.status})` });
         }
-      } catch {
-        /* silently fail */
+      } catch (err) {
+        dispatch({ type: 'SET_ERROR', message: err instanceof Error ? err.message : 'Failed to set mode' });
       }
     },
     [apiUrl, state.sessionId],
