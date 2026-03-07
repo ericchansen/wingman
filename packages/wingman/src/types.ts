@@ -217,12 +217,16 @@ export interface MCPStdioConfig {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Tool names to enable. Default: ["*"] (all). */
+  tools: string[];
 }
 
 export interface MCPHttpConfig {
   type: 'http';
   url: string;
   headers?: Record<string, string>;
+  /** Tool names to enable. Default: ["*"] (all). */
+  tools: string[];
 }
 
 export type MCPServerConfig = MCPStdioConfig | MCPHttpConfig;
