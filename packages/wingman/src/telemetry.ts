@@ -50,6 +50,11 @@ const ATTR = {
 
   // Error conventions
   ERROR_TYPE: 'error.type',
+
+  // OTel exception conventions
+  EXCEPTION_TYPE: 'exception.type',
+  EXCEPTION_MESSAGE: 'exception.message',
+  EXCEPTION_STACKTRACE: 'exception.stacktrace',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -152,6 +157,9 @@ export class WingmanTracer {
 
       const isError = result.startsWith('Error:') || result.startsWith('error:');
       if (isError) {
+        const err = new Error(result.slice(0, 500));
+        err.name = 'ToolError';
+        span.recordException(err);
         span.setStatus({ code: SpanStatusCode.ERROR, message: result.slice(0, 200) });
         span.setAttribute(ATTR.ERROR_TYPE, 'tool_error');
       } else {
@@ -219,6 +227,7 @@ export class WingmanTracer {
 
     const recordError = (message: string) => {
       if (!chatSpan) return;
+      chatSpan.recordException(new Error(message));
       chatSpan.setStatus({ code: SpanStatusCode.ERROR, message });
       chatSpan.setAttribute(ATTR.ERROR_TYPE, 'session_error');
     };
@@ -283,6 +292,48 @@ export class WingmanTracer {
         if (chatSpan) {
           chatSpan.setAttribute(ATTR.GEN_AI_RESPONSE_MODEL, newModel);
         }
+      },
+    };
+  }
+  /**
+   * Track MCP server connection lifecycle with OTel spans.
+   * Call `onConnect`, `onDisconnect`, or `onAuthError` to record lifecycle events.
+   * Each returned function also ends the span — call exactly one of them.
+   */
+  traceMCPConnection(serverName: string): {
+    onConnect: () => void;
+    onDisconnect: (reason?: string) => void;
+    onAuthError: (error: Error) => void;
+  } {
+    const span = this.tracer.startSpan('mcp.connect', {
+      attributes: {
+        [ATTR.MCP_SERVER_NAME]: serverName,
+        [ATTR.MCP_METHOD_NAME]: 'initialize',
+      },
+    });
+
+    return {
+      onConnect: () => {
+        span.addEvent('mcp.connected', { [ATTR.MCP_SERVER_NAME]: serverName });
+        span.setStatus({ code: SpanStatusCode.OK });
+        span.end();
+      },
+      onDisconnect: (reason?: string) => {
+        span.addEvent('mcp.disconnected', {
+          [ATTR.MCP_SERVER_NAME]: serverName,
+          ...(reason && { reason }),
+        });
+        span.end();
+      },
+      onAuthError: (error: Error) => {
+        span.recordException(error);
+        span.addEvent('mcp.auth_error', {
+          [ATTR.MCP_SERVER_NAME]: serverName,
+          [ATTR.EXCEPTION_TYPE]: error.constructor.name,
+          [ATTR.EXCEPTION_MESSAGE]: error.message,
+        });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+        span.end();
       },
     };
   }

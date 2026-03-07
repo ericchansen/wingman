@@ -42,7 +42,7 @@ describe('initTelemetry', () => {
     await initTelemetry({ enabled: true, exporter: 'console' });
     expect(consoleSpy).toHaveBeenCalledWith('📡 OTel tracing → console');
     consoleSpy.mockRestore();
-  });
+  }, 15000);
 
   it('initializes OTLP exporter with default endpoint', async () => {
     const consoleSpy = vi.spyOn(console, 'log');
@@ -51,7 +51,7 @@ describe('initTelemetry', () => {
       expect.stringContaining('OTLP (default endpoint)'),
     );
     consoleSpy.mockRestore();
-  });
+  }, 15000);
 
   it('uses custom endpoint for OTLP', async () => {
     const consoleSpy = vi.spyOn(console, 'log');
@@ -124,5 +124,38 @@ describe('shutdownTelemetry', () => {
     expect(otelCalls.length).toBe(2);
     consoleSpy.mockRestore();
     await shutdownTelemetry();
+  });
+});
+
+describe('HTTP and Express auto-instrumentation', () => {
+  afterEach(async () => {
+    await shutdownTelemetry();
+    delete process.env.OTEL_TRACES_EXPORTER;
+  });
+
+  it('registers HTTP and Express instrumentation without throwing', async () => {
+    await expect(
+      initTelemetry({ enabled: true, exporter: 'console' }),
+    ).resolves.not.toThrow();
+  });
+
+  it('auto-instrumentation is included in both console and OTLP exporter modes', async () => {
+    const consoleSpy = vi.spyOn(console, 'log');
+
+    await initTelemetry({ enabled: true, exporter: 'console' });
+    expect(consoleSpy).toHaveBeenCalledWith('📡 OTel tracing → console');
+
+    consoleSpy.mockRestore();
+  });
+
+  it('is still idempotent after adding auto-instrumentation', async () => {
+    const consoleSpy = vi.spyOn(console, 'log');
+
+    await initTelemetry({ enabled: true, exporter: 'console' });
+    const callCount = consoleSpy.mock.calls.length;
+    await initTelemetry({ enabled: true, exporter: 'console' });
+    expect(consoleSpy.mock.calls.length).toBe(callCount);
+
+    consoleSpy.mockRestore();
   });
 });

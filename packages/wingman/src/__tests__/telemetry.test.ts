@@ -252,6 +252,61 @@ describe('createNoopCallbacks', () => {
   });
 });
 
+describe('WingmanTracer.traceMCPConnection', () => {
+  let tracer: WingmanTracer;
+
+  beforeEach(() => {
+    tracer = new WingmanTracer();
+  });
+
+  it('returns lifecycle tracker with all three functions', () => {
+    const tracker = tracer.traceMCPConnection('my-mcp-server');
+    expect(tracker.onConnect).toBeTypeOf('function');
+    expect(tracker.onDisconnect).toBeTypeOf('function');
+    expect(tracker.onAuthError).toBeTypeOf('function');
+  });
+
+  it('onConnect does not throw', () => {
+    const tracker = tracer.traceMCPConnection('my-mcp-server');
+    expect(() => tracker.onConnect()).not.toThrow();
+  });
+
+  it('onDisconnect does not throw with no reason', () => {
+    const tracker = tracer.traceMCPConnection('my-mcp-server');
+    expect(() => tracker.onDisconnect()).not.toThrow();
+  });
+
+  it('onDisconnect does not throw with a reason', () => {
+    const tracker = tracer.traceMCPConnection('my-mcp-server');
+    expect(() => tracker.onDisconnect('server shutdown')).not.toThrow();
+  });
+
+  it('onAuthError does not throw and accepts an Error', () => {
+    const tracker = tracer.traceMCPConnection('my-mcp-server');
+    expect(() => tracker.onAuthError(new Error('401 Unauthorized'))).not.toThrow();
+  });
+
+  it('can be called independently for multiple servers', () => {
+    const tracker1 = tracer.traceMCPConnection('server-a');
+    const tracker2 = tracer.traceMCPConnection('server-b');
+    expect(() => {
+      tracker1.onConnect();
+      tracker2.onAuthError(new Error('SAML auth failed'));
+    }).not.toThrow();
+  });
+
+  it('lifecycle functions can be called in any order without throwing', () => {
+    const trackerA = tracer.traceMCPConnection('server-a');
+    const trackerB = tracer.traceMCPConnection('server-b');
+    const trackerC = tracer.traceMCPConnection('server-c');
+    expect(() => {
+      trackerA.onConnect();
+      trackerB.onDisconnect('timeout');
+      trackerC.onAuthError(new Error('Token expired'));
+    }).not.toThrow();
+  });
+});
+
 describe('callback composition in WingmanClient', () => {
   it('composeCallbacks merges two callback sets', async () => {
     // Import the module to test — composeCallbacks is internal but we test
