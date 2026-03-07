@@ -130,7 +130,9 @@ export class WingmanClient {
       router.route(event);
     });
 
-    // Store unsubscribe for cleanup on next call
+    // Track this specific unsubscribe by reference so the finally block
+    // only cleans up its own listener, not a concurrent turn's listener.
+    const myUnsubscribe = unsubscribe;
     if (cached) {
       cached.unsubscribe = unsubscribe;
     }
@@ -140,9 +142,10 @@ export class WingmanClient {
     try {
       await session.sendAndWait({ prompt: message }, timeout);
     } finally {
-      // Unsubscribe after this turn completes
-      unsubscribe();
-      if (cached) {
+      // Only unsubscribe our own listener — if a concurrent turn replaced
+      // cached.unsubscribe, we must not null it out.
+      myUnsubscribe();
+      if (cached && cached.unsubscribe === myUnsubscribe) {
         cached.unsubscribe = null;
       }
     }
