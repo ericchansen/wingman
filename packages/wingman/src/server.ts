@@ -62,7 +62,11 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
 
   // CORS
   const corsOption = config.server.cors;
-  if (corsOption) {
+  const corsEnabled = corsOption === true
+    || (typeof corsOption === 'string' && corsOption.length > 0)
+    || (Array.isArray(corsOption) && corsOption.length > 0);
+
+  if (corsEnabled) {
     // Warn when wildcard CORS is used in production
     if (corsOption === true && process.env.NODE_ENV === 'production') {
       console.warn(
@@ -82,7 +86,7 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
       if (allowedOrigins) {
         if (origin && allowedOrigins.has(origin)) {
           res.setHeader('Access-Control-Allow-Origin', origin);
-          res.setHeader('Vary', 'Origin');
+          res.vary('Origin');
         }
       } else {
         res.setHeader('Access-Control-Allow-Origin', '*');

@@ -85,4 +85,72 @@ describe('createServer', () => {
       expect(response.body.error).toBe('sessionId must be a string');
     });
   });
+
+  describe('CORS', () => {
+    it('sets wildcard origin when cors: true', async () => {
+      const { app } = createServer({ config: { server: { cors: true } } });
+      const { default: request } = await import('supertest');
+      const response = await request(app).get('/api/health');
+      expect(response.headers['access-control-allow-origin']).toBe('*');
+    });
+
+    it('omits CORS headers when cors: false', async () => {
+      const { app } = createServer({ config: { server: { cors: false } } });
+      const { default: request } = await import('supertest');
+      const response = await request(app).get('/api/health');
+      expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    });
+
+    it('allows matching origin when cors is a string', async () => {
+      const { app } = createServer({ config: { server: { cors: 'https://myapp.com' } } });
+      const { default: request } = await import('supertest');
+      const response = await request(app)
+        .get('/api/health')
+        .set('Origin', 'https://myapp.com');
+      expect(response.headers['access-control-allow-origin']).toBe('https://myapp.com');
+      expect(response.headers['vary']).toMatch(/Origin/);
+    });
+
+    it('rejects non-matching origin when cors is a string', async () => {
+      const { app } = createServer({ config: { server: { cors: 'https://myapp.com' } } });
+      const { default: request } = await import('supertest');
+      const response = await request(app)
+        .get('/api/health')
+        .set('Origin', 'https://evil.com');
+      expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    });
+
+    it('allows matching origin from an array', async () => {
+      const origins = ['https://a.com', 'https://b.com'];
+      const { app } = createServer({ config: { server: { cors: origins } } });
+      const { default: request } = await import('supertest');
+      const response = await request(app)
+        .get('/api/health')
+        .set('Origin', 'https://b.com');
+      expect(response.headers['access-control-allow-origin']).toBe('https://b.com');
+    });
+
+    it('handles OPTIONS preflight', async () => {
+      const { app } = createServer({ config: { server: { cors: true } } });
+      const { default: request } = await import('supertest');
+      const response = await request(app).options('/api/health');
+      expect(response.status).toBe(204);
+      expect(response.headers['access-control-allow-methods']).toBe('GET, POST, OPTIONS');
+    });
+
+    it('treats empty string cors as disabled', async () => {
+      const { app } = createServer({ config: { server: { cors: '' as unknown as string } } });
+      const { default: request } = await import('supertest');
+      const response = await request(app).get('/api/health');
+      expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    });
+
+    it('treats empty array cors as disabled', async () => {
+      const { app } = createServer({ config: { server: { cors: [] } } });
+      const { default: request } = await import('supertest');
+      const response = await request(app).get('/api/health');
+      expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    });
+  });
+
 });
