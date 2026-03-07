@@ -220,7 +220,7 @@ export async function startServer(options: CreateServerOptions = {}): Promise<Ru
   }
 
   const server = app.listen(port, () => {
-    console.log(`\n🛩️  Wingman running at http://localhost:${port}\n`);
+    console.log(`\n🦜 Wingman running at http://localhost:${port}\n`);
   });
 
   // Graceful shutdown
