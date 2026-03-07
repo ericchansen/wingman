@@ -1,0 +1,54 @@
+{
+  "name": "wingman",
+  "version": "0.1.0",
+  "description": "The open-source chat app for the GitHub Copilot SDK",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    },
+    "./config": {
+      "import": "./dist/config.js",
+      "types": "./dist/config.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "lint": "eslint src/",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "copilot",
+    "github",
+    "copilot-sdk",
+    "chat",
+    "ai",
+    "mcp",
+    "agent"
+  ],
+  "author": "Eric Hansen",
+  "license": "MIT",
+  "dependencies": {
+    "@github/copilot-sdk": "latest",
+    "express": "^4.21.0",
+    "socket.io": "^4.8.0"
+  },
+  "peerDependencies": {
+    "@github/copilot-sdk": "*"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
