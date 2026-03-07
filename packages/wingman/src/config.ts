@@ -41,6 +41,9 @@ export const DEFAULT_CONFIG: Required<WingmanConfig> = {
   telemetry: {
     enabled: false,
     exporter: 'console',
+    endpoint: undefined,
+    serviceName: 'wingman',
+    captureContent: false,
   },
 };
 

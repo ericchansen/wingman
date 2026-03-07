@@ -277,8 +277,16 @@ export interface WingmanServerConfig {
 }
 
 export interface WingmanTelemetryConfig {
+  /** Enable OpenTelemetry tracing. Default: false (fully no-op when disabled). */
   enabled?: boolean;
-  exporter?: 'console' | 'azure-monitor' | 'jaeger';
+  /** Trace exporter to use. Default: 'console'. */
+  exporter?: 'console' | 'otlp';
+  /** OTLP endpoint URL. Default: http://localhost:4318/v1/traces (Jaeger default). */
+  endpoint?: string;
+  /** OTel service.name attribute. Default: 'wingman'. */
+  serviceName?: string;
+  /** Capture tool arguments and results in span attributes. Off by default (sensitive data). */
+  captureContent?: boolean;
 }
 
 export interface WingmanConfig {

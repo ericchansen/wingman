@@ -47,3 +47,7 @@ export type { DiscoveryResult } from './mcp.js';
 // Server
 export { createServer, startServer } from './server.js';
 export type { CreateServerOptions, ServerInstance, RunningServerInstance } from './server.js';
+
+// Telemetry
+export { WingmanTracer, createTracer, createNoopCallbacks } from './telemetry.js';
+export { initTelemetry, shutdownTelemetry } from './instrumentation.js';
