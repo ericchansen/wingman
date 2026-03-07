@@ -167,20 +167,23 @@ function useSystemPreference(): 'light' | 'dark' {
 // Provider
 // ---------------------------------------------------------------------------
 
+const EMPTY_COLORS: WingmanThemeColors = {};
+
 export function ThemeProvider({
   children,
   theme = 'system',
-  colors = {},
+  colors,
   className = '',
 }: ThemeProviderProps) {
   const systemPref = useSystemPreference();
   const resolvedTheme = theme === 'system' ? systemPref : theme;
+  const effectiveColors = colors ?? EMPTY_COLORS;
 
-  const colorStyles = useMemo(() => buildColorStyles(colors), [colors]);
+  const colorStyles = useMemo(() => buildColorStyles(effectiveColors), [effectiveColors]);
 
   const contextValue = useMemo<ThemeContextValue>(
-    () => ({ resolvedTheme, theme, colors }),
-    [resolvedTheme, theme, colors],
+    () => ({ resolvedTheme, theme, colors: effectiveColors }),
+    [resolvedTheme, theme, effectiveColors],
   );
 
   return (

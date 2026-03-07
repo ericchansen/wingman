@@ -38,7 +38,7 @@
   "author": "Eric Hansen",
   "license": "MIT",
   "engines": {
-    "node": ">=18.19.0"
+    "node": ">=20.11.0"
   },
   "dependencies": {
     "@github/copilot-sdk": "latest",
