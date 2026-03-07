@@ -5,13 +5,17 @@
  * 1. Built-in defaults (Power BI remote)
  * 2. User global config (~/.copilot/mcp-config.json)
  * 3. Installed Copilot CLI plugins (~/.copilot/installed-plugins/)
- * 4. Project-level overrides (./mcp.json or wingman.config.ts)
+ * 4. Project-level overrides (./mcp.json)
+ * 5. User overrides from wingman.config.ts (highest priority)
  */
 
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
-import type { MCPServerConfig, DiscoveredMCPServer } from './types.js';
+import { trace, SpanStatusCode, context } from '@opentelemetry/api';
+import type { MCPServerConfig } from './types.js';
+
+const MCP_TRACER = 'wingman';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -146,11 +150,37 @@ async function loadProjectConfig(projectRoot?: string): Promise<Record<string, M
 }
 
 // ---------------------------------------------------------------------------
+// OTel discovery helper
+// ---------------------------------------------------------------------------
+
+type OTelTracer = ReturnType<typeof trace.getTracer>;
+type OTelContext = ReturnType<typeof context.active>;
+
+async function runDiscoveryStage(
+  tracer: OTelTracer,
+  parentCtx: OTelContext,
+  spanName: string,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const span = tracer.startSpan(spanName, {}, parentCtx);
+  try {
+    await fn();
+    span.setStatus({ code: SpanStatusCode.OK });
+  } catch (error) {
+    span.recordException(error as Error);
+    span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+    throw error;
+  } finally {
+    span.end();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
- * Discover all MCP servers from the 4-stage pipeline.
+ * Discover all MCP servers from the 5-stage pipeline.
  * User-provided overrides (from wingman.config.ts) are merged last.
  */
 export async function discoverMCPServers(
@@ -187,51 +217,83 @@ export async function discoverWithDiagnostics(
   userOverrides?: Record<string, MCPServerConfig>,
   projectRoot?: string,
 ): Promise<DiscoveryResult> {
+  const tracer = trace.getTracer(MCP_TRACER);
+  const discoverySpan = tracer.startSpan('mcp.discovery', {
+    attributes: {
+      'mcp.discovery.has_overrides': userOverrides != null && Object.keys(userOverrides).length > 0,
+    },
+  });
+  const ctx = trace.setSpan(context.active(), discoverySpan);
+
   const servers: Record<string, MCPServerConfig> = {};
   const sources = new Map<string, string>();
   const diagnostics: string[] = ['🔌 MCP Servers Discovered:'];
   const skillDirectories: string[] = [];
 
-  // Stage 1: Built-in defaults
-  const builtins = getBuiltinDefaults();
-  for (const [name, config] of Object.entries(builtins)) {
-    servers[name] = config;
-    sources.set(name, 'built-in');
-    diagnostics.push(`  ✅ ${name} ← built-in default`);
-  }
+  try {
+    // Stage 1: Built-in defaults
+    await runDiscoveryStage(tracer, ctx, 'mcp.discovery.stage1_builtins', async () => {
+      const builtins = getBuiltinDefaults();
+      for (const [name, config] of Object.entries(builtins)) {
+        servers[name] = config;
+        sources.set(name, 'built-in');
+        diagnostics.push(`  ✅ ${name} ← built-in default`);
+      }
+      discoverySpan.setAttribute('mcp.discovery.stage1.count', Object.keys(builtins).length);
+    });
 
-  // Stage 2: Global config
-  const globals = await loadGlobalConfig();
-  for (const [name, config] of Object.entries(globals)) {
-    servers[name] = config;
-    sources.set(name, 'global config');
-    diagnostics.push(`  ✅ ${name} ← global config`);
-  }
+    // Stage 2: Global config
+    await runDiscoveryStage(tracer, ctx, 'mcp.discovery.stage2_global', async () => {
+      const globals = await loadGlobalConfig();
+      for (const [name, config] of Object.entries(globals)) {
+        servers[name] = config;
+        sources.set(name, 'global config');
+        diagnostics.push(`  ✅ ${name} ← global config`);
+      }
+      discoverySpan.setAttribute('mcp.discovery.stage2.count', Object.keys(globals).length);
+    });
 
-  // Stage 3: Plugins
-  const plugins = await loadPluginServers();
-  for (const [name, config] of Object.entries(plugins.servers)) {
-    servers[name] = config;
-    sources.set(name, 'plugin');
-  }
-  diagnostics.push(...plugins.diagnostics);
-  skillDirectories.push(...plugins.skills);
+    // Stage 3: Plugins
+    await runDiscoveryStage(tracer, ctx, 'mcp.discovery.stage3_plugins', async () => {
+      const plugins = await loadPluginServers();
+      for (const [name, config] of Object.entries(plugins.servers)) {
+        servers[name] = config;
+        sources.set(name, 'plugin');
+      }
+      diagnostics.push(...plugins.diagnostics);
+      skillDirectories.push(...plugins.skills);
+      discoverySpan.setAttribute('mcp.discovery.stage3.count', Object.keys(plugins.servers).length);
+    });
 
-  // Stage 4: Project config
-  const project = await loadProjectConfig(projectRoot);
-  for (const [name, config] of Object.entries(project)) {
-    servers[name] = config;
-    sources.set(name, 'project mcp.json');
-    diagnostics.push(`  ✅ ${name} ← project mcp.json`);
-  }
+    // Stage 4: Project config
+    await runDiscoveryStage(tracer, ctx, 'mcp.discovery.stage4_project', async () => {
+      const project = await loadProjectConfig(projectRoot);
+      for (const [name, config] of Object.entries(project)) {
+        servers[name] = config;
+        sources.set(name, 'project mcp.json');
+        diagnostics.push(`  ✅ ${name} ← project mcp.json`);
+      }
+      discoverySpan.setAttribute('mcp.discovery.stage4.count', Object.keys(project).length);
+    });
 
-  // Stage 5: User overrides
-  if (userOverrides) {
-    for (const [name, config] of Object.entries(userOverrides)) {
-      servers[name] = config;
-      sources.set(name, 'wingman.config.ts');
-      diagnostics.push(`  ✅ ${name} ← wingman.config.ts`);
+    // Stage 5: User overrides
+    if (userOverrides) {
+      for (const [name, config] of Object.entries(userOverrides)) {
+        servers[name] = config;
+        sources.set(name, 'wingman.config.ts');
+        diagnostics.push(`  ✅ ${name} ← wingman.config.ts`);
+      }
+      discoverySpan.setAttribute('mcp.discovery.stage5.count', Object.keys(userOverrides).length);
     }
+
+    discoverySpan.setAttribute('mcp.discovery.total_servers', Object.keys(servers).length);
+    discoverySpan.setStatus({ code: SpanStatusCode.OK });
+  } catch (error) {
+    discoverySpan.recordException(error as Error);
+    discoverySpan.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+    throw error;
+  } finally {
+    discoverySpan.end();
   }
 
   return { servers, sources, skillDirectories, diagnostics };

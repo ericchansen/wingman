@@ -8,7 +8,7 @@ cd my-chat
 npm run dev
 ```
 
-**One command → full-featured chat.** MCP servers auto-discovered, skills loaded, all 63 SDK event types handled, model switching, mode control, abort support — everything works out of the box.
+**One command → full-featured chat.** MCP servers auto-discovered, skills loaded, all 51 SDK event types handled, model switching, mode control, abort support — everything works out of the box.
 
 ## Why Wingman?
 
@@ -16,7 +16,7 @@ npm run dev
 
 ### What's included
 
-- **All 63 SDK event types** handled — token tracking, thinking blocks, tool status, context health
+- **All 51 SDK event types** handled — token tracking, thinking blocks, tool status, context health
 - **MCP server auto-discovery** from Copilot CLI plugins — zero config
 - **Skills and agents** wired automatically
 - **Model switching** — pick any available model from the UI
@@ -118,7 +118,7 @@ export default defineConfig({
   // Server
   server: {
     port: 3000,
-    transport: 'socketio',
+    transport: 'sse',
   },
 
   // Observability (opt-in)
@@ -139,6 +139,74 @@ React SPA (Vite) ──→ Socket.IO ──→ Express Server ──→ WingmanC
 ```
 
 Wingman follows the **"Thin App, Smart Agent"** pattern. The frontend is a thin rendering layer over the Copilot SDK — all intelligence lives in the SDK's agent core. Wingman's job is to faithfully render all SDK events and provide clean input/output channels.
+
+## Local OTel Debugging
+
+Wingman emits OpenTelemetry spans for every chat turn, tool call, subagent, and MCP discovery stage. To see them locally:
+
+### Option A — Console (zero setup)
+
+```typescript
+// wingman.config.ts
+export default defineConfig({
+  telemetry: { enabled: true, exporter: 'console' },
+});
+```
+
+Spans print to stdout in JSON on every request.
+
+### Option B — Jaeger (recommended for tracing UI)
+
+```bash
+docker run -d --name jaeger \
+  -p 16686:16686 -p 4318:4318 \
+  jaegertracing/all-in-one:latest
+```
+
+```typescript
+export default defineConfig({
+  telemetry: {
+    enabled: true,
+    exporter: 'otlp',
+    endpoint: 'http://localhost:4318/v1/traces',
+  },
+});
+```
+
+Open `http://localhost:16686` → select service `wingman`.
+
+### Option C — .NET Aspire Dashboard
+
+```bash
+docker run -d --name aspire \
+  -p 18888:18888 -p 4318:18890 \
+  mcr.microsoft.com/dotnet/aspire-dashboard:latest
+```
+
+```typescript
+export default defineConfig({
+  telemetry: {
+    enabled: true,
+    exporter: 'otlp',
+    endpoint: 'http://localhost:4318/v1/traces',
+    serviceName: 'wingman',
+  },
+});
+```
+
+Open `http://localhost:18888`.
+
+### What's traced
+
+| Span | Description |
+|------|-------------|
+| `http.server` (auto) | Every HTTP request from Express auto-instrumentation |
+| `chat {model}` | One per `sendMessage` call — contains token usage |
+| `tools/call {toolName}` | One per tool execution, child of chat span |
+| `invoke_agent {agentName}` | One per subagent, child of chat span |
+| `mcp.discovery` | Full MCP server discovery run |
+| `mcp.discovery.stage1_builtins` … `stage5` | Per-stage child spans |
+| `mcp.connect` | MCP server connection lifecycle |
 
 ## Contributing
 

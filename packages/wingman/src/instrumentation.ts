@@ -96,6 +96,19 @@ export async function initTelemetry(config: WingmanTelemetryConfig = {}): Promis
 
   const provider = new NodeTracerProvider({ resource, spanProcessors: processors });
   provider.register();
+
+  // Register HTTP and Express auto-instrumentation (patches http module and Express router)
+  const { registerInstrumentations } = await import('@opentelemetry/instrumentation');
+  const { HttpInstrumentation } = await import('@opentelemetry/instrumentation-http');
+  const { ExpressInstrumentation } = await import('@opentelemetry/instrumentation-express');
+  registerInstrumentations({
+    instrumentations: [
+      new HttpInstrumentation(),
+      new ExpressInstrumentation(),
+    ],
+    tracerProvider: provider,
+  });
+
   initialized = true;
 
   shutdownFn = async () => {
