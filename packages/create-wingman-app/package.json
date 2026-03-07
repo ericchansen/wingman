@@ -1,0 +1,31 @@
+{
+  "name": "create-wingman-app",
+  "version": "0.1.0",
+  "description": "Create a new Wingman chat app",
+  "type": "module",
+  "bin": {
+    "create-wingman-app": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "copilot",
+    "wingman",
+    "create",
+    "scaffold"
+  ],
+  "author": "Eric Hansen",
+  "license": "MIT",
+  "dependencies": {
+    "prompts": "^2.4.2",
+    "picocolors": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/prompts": "^2.4.9",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
