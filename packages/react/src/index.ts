@@ -36,14 +36,23 @@ export type { MarkdownRendererProps } from './components/markdown-renderer.js';
 export { WelcomeScreen } from './components/welcome-screen.js';
 export type { WelcomeScreenProps } from './components/welcome-screen.js';
 
-// Phase 2 components (placeholders)
-// export { ModelPicker } from './components/model-picker.js';
-// export { ModeSwitcher } from './components/mode-switcher.js';
-// export { TokenUsage } from './components/token-usage.js';
+// Phase 2 components
+export { TokenUsage } from './components/token-usage.js';
+export type { TokenUsageProps } from './components/token-usage.js';
+
+export { ModelPicker } from './components/model-picker.js';
+export type { ModelPickerProps } from './components/model-picker.js';
+
+export { ModeSwitcher } from './components/mode-switcher.js';
+export type { ModeSwitcherProps } from './components/mode-switcher.js';
+
+export { DebugPanel } from './components/debug-panel.js';
+export type { DebugPanelProps, DebugEvent } from './components/debug-panel.js';
+
+// Phase 3+ components (placeholders)
 // export { ContextHealth } from './components/context-health.js';
 // export { QuotaBar } from './components/quota-bar.js';
 // export { MCPStatus } from './components/mcp-status.js';
-// export { DebugPanel } from './components/debug-panel.js';
 // export { PermissionDialog } from './components/permission-dialog.js';
 
 export const VERSION = '0.1.0';

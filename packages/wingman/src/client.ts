@@ -174,6 +174,57 @@ export class WingmanClient {
   getConfig(): Required<WingmanConfig> {
     return this.config;
   }
+
+  // -------------------------------------------------------------------------
+  // RPC methods — expose SDK RPC surface for UI controls
+  // -------------------------------------------------------------------------
+
+  /** List available models from the SDK. */
+  async listModels(): Promise<Array<{ id: string; name: string }>> {
+    const client = this.getClient();
+    try {
+      const result = await client.rpc.models.list();
+      return result.models.map((m) => ({
+        id: m.id,
+        name: m.id,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /** Switch the model for an active session. */
+  async switchModel(sessionId: string, modelId: string): Promise<void> {
+    const cached = sessionCache.get(sessionId);
+    if (!cached) throw new Error(`No session found with id: ${sessionId}`);
+    await cached.session.rpc.model.switchTo({ modelId });
+  }
+
+  /** Get the current agent mode for a session. */
+  async getMode(sessionId: string): Promise<string> {
+    const cached = sessionCache.get(sessionId);
+    if (!cached) throw new Error(`No session found with id: ${sessionId}`);
+    const result = await cached.session.rpc.mode.get();
+    return result.mode;
+  }
+
+  /** Set the agent mode for a session (e.g. 'interactive', 'plan', 'autopilot'). */
+  async setMode(sessionId: string, mode: string): Promise<void> {
+    const cached = sessionCache.get(sessionId);
+    if (!cached) throw new Error(`No session found with id: ${sessionId}`);
+    await cached.session.rpc.mode.set({ mode: mode as 'interactive' | 'plan' | 'autopilot' });
+  }
+
+  /** Get account quota information. */
+  async getQuota(): Promise<Record<string, unknown> | null> {
+    const client = this.getClient();
+    try {
+      const result = await client.rpc.account.getQuota();
+      return result.quotaSnapshots as unknown as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

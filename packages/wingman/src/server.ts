@@ -81,6 +81,76 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
     res.json(config.ui);
   });
 
+  // -------------------------------------------------------------------------
+  // RPC routes — expose SDK controls for the UI
+  // -------------------------------------------------------------------------
+
+  // List available models
+  app.get('/api/models', async (_req, res) => {
+    try {
+      const models = await client.listModels();
+      res.json({ models });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Switch model for a session
+  app.post('/api/session/:sessionId/model', async (req, res) => {
+    const { sessionId } = req.params;
+    const { model } = req.body as { model?: string };
+
+    if (!model || typeof model !== 'string') {
+      res.status(400).json({ error: 'model is required' });
+      return;
+    }
+
+    try {
+      await client.switchModel(sessionId, model);
+      res.json({ ok: true, model });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Get current mode for a session
+  app.get('/api/session/:sessionId/mode', async (req, res) => {
+    try {
+      const mode = await client.getMode(req.params.sessionId);
+      res.json({ mode });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Set mode for a session
+  app.post('/api/session/:sessionId/mode', async (req, res) => {
+    const { sessionId } = req.params;
+    const { mode } = req.body as { mode?: string };
+
+    if (!mode || typeof mode !== 'string') {
+      res.status(400).json({ error: 'mode is required' });
+      return;
+    }
+
+    try {
+      await client.setMode(sessionId, mode);
+      res.json({ ok: true, mode });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Get account quota
+  app.get('/api/quota', async (_req, res) => {
+    try {
+      const quota = await client.getQuota();
+      res.json(quota ?? {});
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   // Chat SSE endpoint
   app.post('/api/chat', async (req, res) => {
     const { message, sessionId } = req.body as {
