@@ -1,5 +1,5 @@
 /**
- * EventRouter — Routes all 63 SDK event types to typed callbacks.
+ * EventRouter — Routes all 51 SDK event types to typed callbacks.
  *
  * Clean-room implementation that exhaustively handles every event type
  * the Copilot SDK emits. No event is silently dropped.

@@ -36,7 +36,7 @@ describe('resolveConfig', () => {
     expect(resolved.ui.showTokenUsage).toBe(true);
     expect(resolved.ui.showModelPicker).toBe(true);
     expect(resolved.server.port).toBe(3000);
-    expect(resolved.server.transport).toBe('socketio');
+    expect(resolved.server.transport).toBe('sse');
     expect(resolved.telemetry.enabled).toBe(false);
   });
 
@@ -69,7 +69,7 @@ describe('resolveConfig', () => {
     });
     expect(resolved.server.port).toBe(8080);
     expect(resolved.server.cors).toBe(true);
-    expect(resolved.server.transport).toBe('socketio');
+    expect(resolved.server.transport).toBe('sse');
   });
 
   it('deep-merges telemetry config', () => {
@@ -110,7 +110,7 @@ describe('DEFAULT_CONFIG', () => {
   it('has complete server defaults', () => {
     expect(DEFAULT_CONFIG.server.port).toBe(3000);
     expect(DEFAULT_CONFIG.server.cors).toBe(true);
-    expect(DEFAULT_CONFIG.server.transport).toBe('socketio');
+    expect(DEFAULT_CONFIG.server.transport).toBe('sse');
   });
 
   it('has complete telemetry defaults', () => {
