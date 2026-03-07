@@ -272,7 +272,16 @@ export interface WingmanUIConfig {
 
 export interface WingmanServerConfig {
   port?: number;
-  cors?: boolean;
+  /**
+   * CORS configuration.
+   * - `true`  — allow all origins (`*`). Fine for local dev; **unsafe in production**.
+   * - `false` — disable CORS headers entirely.
+   * - `string` — allow a single origin (e.g. `'https://myapp.com'`).
+   * - `string[]` — allow multiple specific origins.
+   *
+   * @default true
+   */
+  cors?: boolean | string | string[];
   transport?: TransportType;
 }
 
