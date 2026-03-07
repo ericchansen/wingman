@@ -61,12 +61,35 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
   app.use(express.json({ limit: '1mb' }));
 
   // CORS
-  if (config.server.cors) {
-    app.use((_req, res, next) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
+  const corsOption = config.server.cors;
+  if (corsOption) {
+    // Warn when wildcard CORS is used in production
+    if (corsOption === true && process.env.NODE_ENV === 'production') {
+      console.warn(
+        '[wingman] ⚠️  CORS is set to allow all origins (*). ' +
+        'This is unsafe in production. Set server.cors to a specific ' +
+        'origin or list of origins, e.g. cors: "https://myapp.com"',
+      );
+    }
+
+    const allowedOrigins: Set<string> | null =
+      typeof corsOption === 'string' ? new Set([corsOption])
+      : Array.isArray(corsOption) ? new Set(corsOption)
+      : null; // null ⇒ wildcard
+
+    app.use((req, res, next) => {
+      const origin = req.headers.origin;
+      if (allowedOrigins) {
+        if (origin && allowedOrigins.has(origin)) {
+          res.setHeader('Access-Control-Allow-Origin', origin);
+          res.setHeader('Vary', 'Origin');
+        }
+      } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+      }
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-      if (_req.method === 'OPTIONS') {
+      if (req.method === 'OPTIONS') {
         res.sendStatus(204);
         return;
       }
