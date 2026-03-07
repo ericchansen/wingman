@@ -1,4 +1,4 @@
-# Wingman
+# 🦜 Wingman
 
 The open-source chat app for the [GitHub Copilot SDK](https://github.com/features/copilot).
 
