@@ -200,7 +200,7 @@ Open `http://localhost:18888`.
 
 | Span | Description |
 |------|-------------|
-| `http.server` (auto) | Every HTTP request from Express auto-instrumentation |
+| `{METHOD} {ROUTE}` (auto) | Every HTTP request from Express auto-instrumentation (e.g. `GET /api/chat`) |
 | `chat {model}` | One per `sendMessage` call — contains token usage |
 | `tools/call {toolName}` | One per tool execution, child of chat span |
 | `invoke_agent {agentName}` | One per subagent, child of chat span |
