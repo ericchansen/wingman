@@ -18,7 +18,7 @@
  * @see https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/mcp.md
  */
 
-import { trace, context, SpanStatusCode, type Span, type Tracer } from '@opentelemetry/api';
+import { trace, context, SpanStatusCode, type Span, type Tracer, type Attributes } from '@opentelemetry/api';
 import type { WingmanTelemetryConfig } from './types.js';
 import type { EventCallbacks } from './events.js';
 
@@ -60,13 +60,6 @@ export class WingmanTracer {
   private tracer: Tracer;
   private config: Required<Pick<WingmanTelemetryConfig, 'captureContent'>>;
 
-  /** Active chat span for the current sendMessage call. */
-  private chatSpan: Span | null = null;
-  /** Active tool spans keyed by toolCallId. */
-  private toolSpans = new Map<string, Span>();
-  /** Active subagent spans keyed by toolCallId. */
-  private subagentSpans = new Map<string, Span>();
-
   constructor(config: WingmanTelemetryConfig = {}) {
     this.tracer = trace.getTracer(TRACER_NAME, TRACER_VERSION);
     this.config = {
@@ -76,264 +69,222 @@ export class WingmanTracer {
 
   /**
    * Create EventCallbacks that produce OTel spans.
-   * These callbacks should be composed with user-provided callbacks
-   * in WingmanClient.sendMessage().
+   * State is scoped per-call so concurrent sendMessage turns are isolated.
    */
   createCallbacks(sessionId: string, model: string): EventCallbacks {
-    return {
-      onTurnStart: (_turnId: string) => {
-        this.startChatSpan(sessionId, model);
-      },
+    // Per-turn state — each sendMessage call gets isolated span tracking
+    let chatSpan: Span | null = null;
+    const toolSpans = new Map<string, Span>();
+    const subagentSpans = new Map<string, Span>();
 
-      onTurnEnd: (_turnId: string) => {
-        this.endChatSpan();
-      },
+    const tracer = this.tracer;
+    const captureContent = this.config.captureContent;
+
+    // -- Span lifecycle helpers (close over per-turn state) --
+
+    const startChatSpan = () => {
+      endChatSpan();
+      chatSpan = tracer.startSpan(`chat ${model}`, {
+        attributes: {
+          [ATTR.GEN_AI_SYSTEM]: 'github.copilot',
+          [ATTR.GEN_AI_OPERATION_NAME]: 'chat',
+          [ATTR.GEN_AI_REQUEST_MODEL]: model,
+          [ATTR.GEN_AI_CONVERSATION_ID]: sessionId,
+        },
+      });
+    };
+
+    const endChatSpan = () => {
+      if (chatSpan) {
+        chatSpan.end();
+        chatSpan = null;
+      }
+      for (const [id, span] of toolSpans) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Orphaned tool span' });
+        span.end();
+        toolSpans.delete(id);
+      }
+      for (const [id, span] of subagentSpans) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Orphaned subagent span' });
+        span.end();
+        subagentSpans.delete(id);
+      }
+    };
+
+    const startToolSpan = (
+      toolCallId: string,
+      toolName: string,
+      mcpServerName?: string,
+      mcpToolName?: string,
+      args?: Record<string, unknown>,
+    ) => {
+      const parentContext = chatSpan
+        ? trace.setSpan(context.active(), chatSpan)
+        : context.active();
+
+      const attributes: Attributes = {
+        [ATTR.GEN_AI_SYSTEM]: 'github.copilot',
+        [ATTR.GEN_AI_TOOL_NAME]: toolName,
+        [ATTR.GEN_AI_TOOL_CALL_ID]: toolCallId,
+        ...(mcpServerName && {
+          [ATTR.MCP_SERVER_NAME]: mcpServerName,
+          [ATTR.MCP_METHOD_NAME]: 'tools/call',
+          [ATTR.NETWORK_TRANSPORT]: 'pipe',
+        }),
+        ...(mcpToolName && { 'mcp.tool.name': mcpToolName }),
+      };
+
+      if (captureContent && args) {
+        try {
+          attributes['gen_ai.tool.call.arguments'] = JSON.stringify(args);
+        } catch {
+          attributes['gen_ai.tool.call.arguments'] = '[unserializable]';
+        }
+      }
+
+      const span = tracer.startSpan(`tools/call ${toolName}`, { attributes }, parentContext);
+      toolSpans.set(toolCallId, span);
+    };
+
+    const endToolSpan = (toolCallId: string, _toolName: string, result: string) => {
+      const span = toolSpans.get(toolCallId);
+      if (!span) return;
+
+      const isError = result.startsWith('Error:') || result.startsWith('error:');
+      if (isError) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: result.slice(0, 200) });
+        span.setAttribute(ATTR.ERROR_TYPE, 'tool_error');
+      } else {
+        span.setStatus({ code: SpanStatusCode.OK });
+      }
+
+      if (captureContent && !isError) {
+        span.setAttribute('gen_ai.tool.call.result', result.slice(0, 4096));
+      }
+
+      span.end();
+      toolSpans.delete(toolCallId);
+    };
+
+    const startSubagentSpan = (toolCallId: string, agentName: string) => {
+      const parentContext = chatSpan
+        ? trace.setSpan(context.active(), chatSpan)
+        : context.active();
+
+      const span = tracer.startSpan(
+        `invoke_agent ${agentName}`,
+        {
+          attributes: {
+            [ATTR.GEN_AI_SYSTEM]: 'github.copilot',
+            [ATTR.GEN_AI_OPERATION_NAME]: 'invoke_agent',
+            'gen_ai.agent.name': agentName,
+          },
+        },
+        parentContext,
+      );
+      subagentSpans.set(toolCallId, span);
+    };
+
+    const endSubagentSpan = (toolCallId: string, error?: string) => {
+      const span = subagentSpans.get(toolCallId);
+      if (!span) return;
+
+      if (error) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error });
+        span.setAttribute(ATTR.ERROR_TYPE, 'agent_error');
+      } else {
+        span.setStatus({ code: SpanStatusCode.OK });
+      }
+
+      span.end();
+      subagentSpans.delete(toolCallId);
+    };
+
+    const recordUsage = (
+      inputTokens: number,
+      outputTokens: number,
+      cacheReadTokens?: number,
+      responseModel?: string,
+    ) => {
+      if (!chatSpan) return;
+      chatSpan.setAttribute(ATTR.GEN_AI_USAGE_INPUT_TOKENS, inputTokens);
+      chatSpan.setAttribute(ATTR.GEN_AI_USAGE_OUTPUT_TOKENS, outputTokens);
+      if (cacheReadTokens != null) {
+        chatSpan.setAttribute(ATTR.GEN_AI_USAGE_CACHE_READ_TOKENS, cacheReadTokens);
+      }
+      if (responseModel) {
+        chatSpan.setAttribute(ATTR.GEN_AI_RESPONSE_MODEL, responseModel);
+      }
+    };
+
+    const recordError = (message: string) => {
+      if (!chatSpan) return;
+      chatSpan.setStatus({ code: SpanStatusCode.ERROR, message });
+      chatSpan.setAttribute(ATTR.ERROR_TYPE, 'session_error');
+    };
+
+    const recordSkillInvocation = (name: string, pluginName?: string) => {
+      if (!chatSpan) return;
+      chatSpan.addEvent('skill.invoked', {
+        'skill.name': name,
+        ...(pluginName && { 'skill.plugin': pluginName }),
+      });
+    };
+
+    const recordSpanEvent = (eventName: string, attributes?: Record<string, unknown>) => {
+      if (!chatSpan) return;
+      const safeAttrs: Record<string, string | number | boolean> = {};
+      if (attributes) {
+        for (const [key, value] of Object.entries(attributes)) {
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            safeAttrs[key] = value;
+          } else if (value != null) {
+            try {
+              safeAttrs[key] = JSON.stringify(value);
+            } catch {
+              safeAttrs[key] = '[unserializable]';
+            }
+          }
+        }
+      }
+      chatSpan.addEvent(eventName, safeAttrs);
+    };
+
+    // -- Return callbacks that close over per-turn state --
+
+    return {
+      onTurnStart: (_turnId: string) => startChatSpan(),
+      onTurnEnd: (_turnId: string) => endChatSpan(),
 
       onToolStart: (tool) => {
-        this.startToolSpan(
-          tool.toolCallId,
-          tool.toolName,
-          tool.mcpServerName,
-          tool.mcpToolName,
-          tool.arguments,
-        );
+        startToolSpan(tool.toolCallId, tool.toolName, tool.mcpServerName, tool.mcpToolName, tool.arguments);
       },
-
       onToolComplete: (toolCallId: string, toolName: string, result: string) => {
-        this.endToolSpan(toolCallId, toolName, result);
+        endToolSpan(toolCallId, toolName, result);
       },
 
       onUsage: (usage) => {
-        this.recordUsage(usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.model);
+        recordUsage(usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.model);
       },
 
-      onError: (message: string) => {
-        this.recordError(message);
-      },
+      onError: (message: string) => recordError(message),
 
-      onSubagentStarted: (toolCallId: string, name: string) => {
-        this.startSubagentSpan(toolCallId, name);
-      },
+      onSubagentStarted: (toolCallId: string, name: string) => startSubagentSpan(toolCallId, name),
+      onSubagentCompleted: (toolCallId: string) => endSubagentSpan(toolCallId),
+      onSubagentFailed: (toolCallId: string, _name: string, error?: string) => endSubagentSpan(toolCallId, error),
 
-      onSubagentCompleted: (toolCallId: string) => {
-        this.endSubagentSpan(toolCallId);
-      },
+      onSkillInvoked: (name: string, pluginName?: string) => recordSkillInvocation(name, pluginName),
 
-      onSubagentFailed: (toolCallId: string, _name: string, error?: string) => {
-        this.endSubagentSpan(toolCallId, error);
-      },
+      onTruncation: (data: Record<string, unknown>) => recordSpanEvent('context.truncation', data),
+      onCompactionStart: () => recordSpanEvent('context.compaction_start'),
+      onCompactionComplete: () => recordSpanEvent('context.compaction_complete'),
 
-      onSkillInvoked: (name: string, pluginName?: string) => {
-        this.recordSkillInvocation(name, pluginName);
-      },
-
-      onTruncation: (data: Record<string, unknown>) => {
-        this.recordSpanEvent('context.truncation', data);
-      },
-
-      onCompactionStart: () => {
-        this.recordSpanEvent('context.compaction_start');
-      },
-
-      onCompactionComplete: () => {
-        this.recordSpanEvent('context.compaction_complete');
-      },
-
-      onModelChange: (model: string) => {
-        if (this.chatSpan) {
-          this.chatSpan.setAttribute(ATTR.GEN_AI_RESPONSE_MODEL, model);
+      onModelChange: (newModel: string) => {
+        if (chatSpan) {
+          chatSpan.setAttribute(ATTR.GEN_AI_RESPONSE_MODEL, newModel);
         }
       },
     };
-  }
-
-  // -------------------------------------------------------------------------
-  // Span lifecycle
-  // -------------------------------------------------------------------------
-
-  /** Start the parent chat span for a sendMessage call. */
-  private startChatSpan(sessionId: string, model: string): void {
-    // End any existing chat span (shouldn't happen, but be safe)
-    this.endChatSpan();
-
-    this.chatSpan = this.tracer.startSpan(`chat ${model}`, {
-      attributes: {
-        [ATTR.GEN_AI_SYSTEM]: 'github.copilot',
-        [ATTR.GEN_AI_OPERATION_NAME]: 'chat',
-        [ATTR.GEN_AI_REQUEST_MODEL]: model,
-        [ATTR.GEN_AI_CONVERSATION_ID]: sessionId,
-      },
-    });
-  }
-
-  /** End the parent chat span. */
-  private endChatSpan(): void {
-    if (this.chatSpan) {
-      this.chatSpan.end();
-      this.chatSpan = null;
-    }
-    // Clean up any orphaned child spans
-    for (const [id, span] of this.toolSpans) {
-      span.setStatus({ code: SpanStatusCode.ERROR, message: 'Orphaned tool span' });
-      span.end();
-      this.toolSpans.delete(id);
-    }
-    for (const [id, span] of this.subagentSpans) {
-      span.setStatus({ code: SpanStatusCode.ERROR, message: 'Orphaned subagent span' });
-      span.end();
-      this.subagentSpans.delete(id);
-    }
-  }
-
-  /** Start a child span for a tool execution. */
-  private startToolSpan(
-    toolCallId: string,
-    toolName: string,
-    mcpServerName?: string,
-    mcpToolName?: string,
-    args?: Record<string, unknown>,
-  ): void {
-    const parentContext = this.chatSpan
-      ? trace.setSpan(context.active(), this.chatSpan)
-      : context.active();
-
-    const span = this.tracer.startSpan(
-      `tools/call ${toolName}`,
-      {
-        attributes: {
-          [ATTR.GEN_AI_SYSTEM]: 'github.copilot',
-          [ATTR.GEN_AI_TOOL_NAME]: toolName,
-          [ATTR.GEN_AI_TOOL_CALL_ID]: toolCallId,
-          ...(mcpServerName && {
-            [ATTR.MCP_SERVER_NAME]: mcpServerName,
-            [ATTR.MCP_METHOD_NAME]: 'tools/call',
-            [ATTR.NETWORK_TRANSPORT]: 'pipe',
-          }),
-          ...(mcpToolName && { 'mcp.tool.name': mcpToolName }),
-          ...(this.config.captureContent && args && {
-            'gen_ai.tool.call.arguments': JSON.stringify(args),
-          }),
-        },
-      },
-      parentContext,
-    );
-
-    this.toolSpans.set(toolCallId, span);
-  }
-
-  /** End a tool span, recording the result or error. */
-  private endToolSpan(toolCallId: string, _toolName: string, result: string): void {
-    const span = this.toolSpans.get(toolCallId);
-    if (!span) return;
-
-    // Detect error results from tool execution
-    const isError = result.startsWith('Error:') || result.startsWith('error:');
-    if (isError) {
-      span.setStatus({ code: SpanStatusCode.ERROR, message: result.slice(0, 200) });
-      span.setAttribute(ATTR.ERROR_TYPE, 'tool_error');
-    } else {
-      span.setStatus({ code: SpanStatusCode.OK });
-    }
-
-    if (this.config.captureContent && !isError) {
-      span.setAttribute('gen_ai.tool.call.result', result.slice(0, 4096));
-    }
-
-    span.end();
-    this.toolSpans.delete(toolCallId);
-  }
-
-  /** Start a child span for a subagent invocation. */
-  private startSubagentSpan(toolCallId: string, agentName: string): void {
-    const parentContext = this.chatSpan
-      ? trace.setSpan(context.active(), this.chatSpan)
-      : context.active();
-
-    const span = this.tracer.startSpan(
-      `invoke_agent ${agentName}`,
-      {
-        attributes: {
-          [ATTR.GEN_AI_SYSTEM]: 'github.copilot',
-          [ATTR.GEN_AI_OPERATION_NAME]: 'invoke_agent',
-          'gen_ai.agent.name': agentName,
-        },
-      },
-      parentContext,
-    );
-
-    this.subagentSpans.set(toolCallId, span);
-  }
-
-  /** End a subagent span, optionally recording an error. */
-  private endSubagentSpan(toolCallId: string, error?: string): void {
-    const span = this.subagentSpans.get(toolCallId);
-    if (!span) return;
-
-    if (error) {
-      span.setStatus({ code: SpanStatusCode.ERROR, message: error });
-      span.setAttribute(ATTR.ERROR_TYPE, 'agent_error');
-    } else {
-      span.setStatus({ code: SpanStatusCode.OK });
-    }
-
-    span.end();
-    this.subagentSpans.delete(toolCallId);
-  }
-
-  // -------------------------------------------------------------------------
-  // Attribute recording
-  // -------------------------------------------------------------------------
-
-  /** Record token usage on the chat span. */
-  private recordUsage(
-    inputTokens: number,
-    outputTokens: number,
-    cacheReadTokens?: number,
-    model?: string,
-  ): void {
-    if (!this.chatSpan) return;
-
-    this.chatSpan.setAttribute(ATTR.GEN_AI_USAGE_INPUT_TOKENS, inputTokens);
-    this.chatSpan.setAttribute(ATTR.GEN_AI_USAGE_OUTPUT_TOKENS, outputTokens);
-    if (cacheReadTokens != null) {
-      this.chatSpan.setAttribute(ATTR.GEN_AI_USAGE_CACHE_READ_TOKENS, cacheReadTokens);
-    }
-    if (model) {
-      this.chatSpan.setAttribute(ATTR.GEN_AI_RESPONSE_MODEL, model);
-    }
-  }
-
-  /** Record an error on the chat span. */
-  private recordError(message: string): void {
-    if (!this.chatSpan) return;
-    this.chatSpan.setStatus({ code: SpanStatusCode.ERROR, message });
-    this.chatSpan.setAttribute(ATTR.ERROR_TYPE, 'session_error');
-  }
-
-  /** Record a skill invocation as a span event on the chat span. */
-  private recordSkillInvocation(name: string, pluginName?: string): void {
-    if (!this.chatSpan) return;
-    this.chatSpan.addEvent('skill.invoked', {
-      'skill.name': name,
-      ...(pluginName && { 'skill.plugin': pluginName }),
-    });
-  }
-
-  /** Record an arbitrary span event on the chat span. */
-  private recordSpanEvent(name: string, attributes?: Record<string, unknown>): void {
-    if (!this.chatSpan) return;
-    // OTel span events only accept primitive attribute values
-    const safeAttrs: Record<string, string | number | boolean> = {};
-    if (attributes) {
-      for (const [key, value] of Object.entries(attributes)) {
-        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-          safeAttrs[key] = value;
-        } else if (value != null) {
-          safeAttrs[key] = JSON.stringify(value);
-        }
-      }
-    }
-    this.chatSpan.addEvent(name, safeAttrs);
   }
 }
 

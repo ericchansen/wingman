@@ -211,11 +211,13 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
 
 /** Start the server and listen on the configured port. */
 export async function startServer(options: CreateServerOptions = {}): Promise<RunningServerInstance> {
+  // Initialize OTel before constructing app/client so the tracer provider
+  // is registered before any trace.getTracer() calls
+  const preConfig = resolveConfig(options.config ?? {});
+  await initTelemetry(preConfig.telemetry);
+
   const { app, client, config } = createServer(options);
   const port = config.server.port;
-
-  // Initialize OTel tracing before anything else
-  await initTelemetry(config.telemetry);
 
   // Log MCP discovery
   const discovery = await discoverWithDiagnostics(config.mcpServers);

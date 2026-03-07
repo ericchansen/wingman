@@ -182,7 +182,9 @@ export class WingmanClient {
 
 /**
  * Compose two sets of EventCallbacks so both fire for each event.
- * The primary callbacks fire first, then secondary (telemetry).
+ * Primary (user) callbacks fire first, then secondary (telemetry).
+ * Telemetry callbacks are wrapped in try/catch — they must never
+ * break user-facing streaming.
  */
 function composeCallbacks(
   primary: Partial<EventCallbacks>,
@@ -190,23 +192,42 @@ function composeCallbacks(
 ): EventCallbacks {
   const composed: Record<string, (...args: unknown[]) => void> = {};
 
-  // Collect all unique callback keys from both sets
   const allKeys = new Set([
     ...Object.keys(primary),
     ...Object.keys(secondary),
   ]);
 
   for (const key of allKeys) {
-    const pFn = (primary as Record<string, unknown>)[key] as ((...args: unknown[]) => void) | undefined;
-    const sFn = (secondary as Record<string, unknown>)[key] as ((...args: unknown[]) => void) | undefined;
+    const primaryValue = (primary as Record<string, unknown>)[key];
+    const secondaryValue = (secondary as Record<string, unknown>)[key];
+
+    const pFn = typeof primaryValue === 'function'
+      ? (primaryValue as (...args: unknown[]) => void)
+      : undefined;
+    const sFn = typeof secondaryValue === 'function'
+      ? (secondaryValue as (...args: unknown[]) => void)
+      : undefined;
 
     if (pFn && sFn) {
       composed[key] = (...args: unknown[]) => {
         pFn(...args);
-        sFn(...args);
+        try {
+          sFn(...args);
+        } catch (err) {
+          console.debug('Telemetry callback error:', key, err);
+        }
       };
-    } else {
-      composed[key] = (pFn ?? sFn)!;
+    } else if (pFn) {
+      composed[key] = pFn;
+    } else if (sFn) {
+      const wrappedSFn = sFn;
+      composed[key] = (...args: unknown[]) => {
+        try {
+          wrappedSFn(...args);
+        } catch (err) {
+          console.debug('Telemetry callback error:', key, err);
+        }
+      };
     }
   }
 
