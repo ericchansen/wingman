@@ -7,6 +7,7 @@
 
 import React, { createContext, useContext, useReducer, useCallback, useRef, type ReactNode } from 'react';
 import type { ChatMessage, ToolExecution, UsageData } from 'wingman';
+import { ThemeProvider, type WingmanTheme, type WingmanThemeColors } from './theme-provider.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -259,9 +260,15 @@ export interface ChatProviderProps {
   children: ReactNode;
   /** Base URL for the Wingman API. Default: '' (same origin). */
   apiUrl?: string;
+  /** Color scheme: 'light', 'dark', or 'system'. Default: 'system'. */
+  theme?: WingmanTheme;
+  /** Override design token colors. */
+  colors?: WingmanThemeColors;
+  /** Additional CSS class on the theme root container. */
+  className?: string;
 }
 
-export function ChatProvider({ children, apiUrl = '' }: ChatProviderProps) {
+export function ChatProvider({ children, apiUrl = '', theme, colors, className }: ChatProviderProps) {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -339,9 +346,11 @@ export function ChatProvider({ children, apiUrl = '' }: ChatProviderProps) {
   }, []);
 
   return (
-    <ChatContext.Provider value={{ state, dispatch, sendMessage, newChat }}>
-      {children}
-    </ChatContext.Provider>
+    <ThemeProvider theme={theme} colors={colors} className={className}>
+      <ChatContext.Provider value={{ state, dispatch, sendMessage, newChat }}>
+        {children}
+      </ChatContext.Provider>
+    </ThemeProvider>
   );
 }
 
