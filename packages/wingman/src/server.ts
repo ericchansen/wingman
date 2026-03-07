@@ -123,7 +123,9 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
     };
 
     // Request timeout: must exceed SDK's 300s so SDK error fires first
-    const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT ?? '330000', 10);
+    const DEFAULT_TIMEOUT = 330_000;
+    const parsed = parseInt(process.env.REQUEST_TIMEOUT ?? '', 10);
+    const REQUEST_TIMEOUT = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT;
     const timeout = setTimeout(() => {
       if (!closed) {
         send('error', { message: 'Request timeout exceeded' });

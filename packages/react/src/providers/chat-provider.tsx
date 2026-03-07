@@ -48,6 +48,7 @@ const initialState: ChatState = {
 type ChatAction =
   | { type: 'ADD_USER_MESSAGE'; content: string }
   | { type: 'START_STREAMING' }
+  | { type: 'STOP_STREAMING' }
   | { type: 'APPEND_DELTA'; content: string }
   | { type: 'APPEND_REASONING'; content: string }
   | { type: 'SET_REASONING_VISIBLE'; visible: boolean }
@@ -211,6 +212,9 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'SET_ERROR':
       return { ...state, error: action.message, isStreaming: false };
 
+    case 'STOP_STREAMING':
+      return { ...state, isStreaming: false };
+
     case 'CLEAR_ERROR':
       return { ...state, error: null };
 
@@ -335,6 +339,10 @@ export function ChatProvider({ children, apiUrl = '', theme, colors, className }
           type: 'SET_ERROR',
           message: err instanceof Error ? err.message : String(err),
         });
+      } finally {
+        // Always exit streaming state, even if the SSE stream ends
+        // without a 'done' event (network drop, server crash, etc.)
+        dispatch({ type: 'STOP_STREAMING' });
       }
     },
     [apiUrl, state.sessionId, state.isStreaming],
