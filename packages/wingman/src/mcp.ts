@@ -137,7 +137,7 @@ async function loadPluginServers(): Promise<{
           }
         }
       } catch (err) {
-        diagnostics.push(`  ⚠️ ${catalog}/${plugin} — failed to load: ${(err as Error).message}`);
+        diagnostics.push(`  ⚠️ ${catalog}/${plugin} — failed to load: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }
