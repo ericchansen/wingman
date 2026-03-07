@@ -178,13 +178,23 @@ export class EventRouter {
           mcpToolName: data?.mcpToolName,
         });
         break;
-      case 'tool.execution_complete':
+      case 'tool.execution_complete': {
+        let resultStr = '';
+        if (data?.result != null) {
+          if (typeof data.result === 'object') {
+            const content = data.result.content ?? data.result;
+            resultStr = typeof content === 'string' ? content : JSON.stringify(content);
+          } else {
+            resultStr = String(data.result);
+          }
+        }
         this.callbacks.onToolComplete?.(
           data?.toolCallId ?? '',
           data?.toolName ?? '',
-          typeof data?.result === 'object' ? JSON.stringify(data.result.content ?? data.result) : String(data?.result ?? ''),
+          resultStr,
         );
         break;
+      }
       case 'tool.execution_progress':
         this.callbacks.onToolProgress?.(data?.toolCallId ?? '', data?.progressMessage ?? '');
         break;
