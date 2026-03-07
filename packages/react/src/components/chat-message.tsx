@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import type { ChatMessage as ChatMessageType } from 'wingman';
+import type { ChatMessage as ChatMessageType } from '@wingman-chat/core';
 import { ToolStatus } from './tool-status.js';
 import { ThinkingBlock } from './thinking-block.js';
 import { MarkdownRenderer } from './markdown-renderer.js';
