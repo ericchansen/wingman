@@ -1,7 +1,7 @@
 /**
  * Wingman — Core types for the GitHub Copilot SDK chat framework.
  *
- * These types define the public API surface. All 63 SDK event types are
+ * These types define the public API surface. All 51 SDK event types are
  * represented, along with RPC method types, transport adapters, and
  * configuration schemas.
  */
@@ -31,7 +31,7 @@ export type EventCategory =
   | 'hook'
   | 'task';
 
-/** All 63 SDK event type strings. */
+/** All 51 SDK event type strings. */
 export type SDKEventType =
   // Streaming (2)
   | 'assistant.message_delta'

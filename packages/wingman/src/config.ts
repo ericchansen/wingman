@@ -1,8 +1,8 @@
 /**
  * Wingman configuration loader.
  *
- * Provides `defineConfig()` for type-safe configuration and loads
- * wingman.config.ts at runtime.
+ * Provides `defineConfig()` for type-safe configuration and `resolveConfig()`
+ * to deep-merge user config with defaults.
  */
 
 import type { WingmanConfig } from './types.js';
@@ -36,7 +36,7 @@ export const DEFAULT_CONFIG: Required<WingmanConfig> = {
   server: {
     port: 3000,
     cors: true,
-    transport: 'socketio',
+    transport: 'sse',
   },
   telemetry: {
     enabled: false,

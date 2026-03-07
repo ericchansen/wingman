@@ -56,7 +56,7 @@ pnpm clean          # Remove all build artifacts
 ## Architecture Principles
 
 1. **Thin App, Smart Agent** — Wingman is a rendering layer over the Copilot SDK. Don't add intelligence to the frontend.
-2. **All 63 events** — Every SDK event type must be handled. No `default: break` dropping events silently.
+2. **All 51 events** — Every SDK event type must be handled. No `default: break` dropping events silently.
 3. **Zero config by default** — Everything must work out of the box. Configuration is for customization, not setup.
 4. **Boring default** — The default UI is intentionally generic. Personality comes from configuration.
 
