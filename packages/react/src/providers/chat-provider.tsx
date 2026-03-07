@@ -204,7 +204,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         sessionId: action.sessionId,
         activeTools: tools,
         currentReasoning: '',
-        isReasoningVisible: false,
+        isReasoningVisible: state.currentReasoning.length > 0,
         messages: msgs,
       };
     }
@@ -288,6 +288,7 @@ export function ChatProvider({ children, apiUrl = '', theme, colors, className }
       abortRef.current?.abort();
       abortRef.current = new AbortController();
 
+      dispatch({ type: 'CLEAR_ERROR' });
       dispatch({ type: 'ADD_USER_MESSAGE', content: message });
       dispatch({ type: 'START_STREAMING' });
 
