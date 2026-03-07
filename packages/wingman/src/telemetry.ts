@@ -222,7 +222,7 @@ export class WingmanTracer {
   }
 
   /** End a tool span, recording the result or error. */
-  private endToolSpan(toolCallId: string, toolName: string, result: string): void {
+  private endToolSpan(toolCallId: string, _toolName: string, result: string): void {
     const span = this.toolSpans.get(toolCallId);
     if (!span) return;
 
@@ -239,7 +239,6 @@ export class WingmanTracer {
       span.setAttribute('gen_ai.tool.call.result', result.slice(0, 4096));
     }
 
-    span.setAttribute(ATTR.GEN_AI_TOOL_NAME, toolName);
     span.end();
     this.toolSpans.delete(toolCallId);
   }
