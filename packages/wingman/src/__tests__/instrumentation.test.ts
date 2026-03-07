@@ -48,7 +48,7 @@ describe('initTelemetry', () => {
     const consoleSpy = vi.spyOn(console, 'log');
     await initTelemetry({ enabled: true, exporter: 'otlp' });
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('OTLP at http://localhost:4318/v1/traces'),
+      expect.stringContaining('OTLP (default endpoint)'),
     );
     consoleSpy.mockRestore();
   });
@@ -66,13 +66,33 @@ describe('initTelemetry', () => {
     consoleSpy.mockRestore();
   });
 
-  it('respects OTEL_EXPORTER_OTLP_ENDPOINT env var', async () => {
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://env-override:4318/v1/traces';
+  it('respects OTEL_TRACES_EXPORTER=none to disable tracing', async () => {
+    process.env.OTEL_TRACES_EXPORTER = 'none';
     const consoleSpy = vi.spyOn(console, 'log');
-    await initTelemetry({ enabled: true, exporter: 'otlp', endpoint: 'http://config:4318' });
+    await initTelemetry({ enabled: true, exporter: 'otlp' });
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('http://env-override:4318/v1/traces'),
+      expect.stringContaining('OTel tracing disabled'),
     );
+    consoleSpy.mockRestore();
+  });
+
+  it('lets SDK handle OTEL_EXPORTER_OTLP_ENDPOINT natively', async () => {
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://collector:4318';
+    const consoleSpy = vi.spyOn(console, 'log');
+    // No config.endpoint — SDK reads env var and appends /v1/traces itself
+    await initTelemetry({ enabled: true, exporter: 'otlp' });
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('OTLP (default endpoint)'),
+    );
+    consoleSpy.mockRestore();
+  });
+
+  it('allows re-enabling after disabled call', async () => {
+    const consoleSpy = vi.spyOn(console, 'log');
+    await initTelemetry({ enabled: false });
+    // initialized should NOT be true, so this should work
+    await initTelemetry({ enabled: true, exporter: 'console' });
+    expect(consoleSpy).toHaveBeenCalledWith('📡 OTel tracing → console');
     consoleSpy.mockRestore();
   });
 

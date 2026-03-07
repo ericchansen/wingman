@@ -165,6 +165,29 @@ describe('WingmanTracer', () => {
     });
   });
 
+  describe('concurrent turn isolation', () => {
+    it('createCallbacks returns isolated state per call', () => {
+      const callbacks1 = tracer.createCallbacks('session-1', 'model-a');
+      const callbacks2 = tracer.createCallbacks('session-2', 'model-b');
+
+      expect(() => {
+        // Start turns on both — should not interfere
+        callbacks1.onTurnStart?.('turn-1');
+        callbacks2.onTurnStart?.('turn-2');
+
+        // Tools on different callback sets
+        callbacks1.onToolStart?.({ toolCallId: 'tc-1', toolName: 'tool-a' });
+        callbacks2.onToolStart?.({ toolCallId: 'tc-1', toolName: 'tool-b' }); // same ID, different set
+
+        callbacks1.onToolComplete?.('tc-1', 'tool-a', 'result-a');
+        callbacks2.onToolComplete?.('tc-1', 'tool-b', 'result-b');
+
+        callbacks1.onTurnEnd?.('turn-1');
+        callbacks2.onTurnEnd?.('turn-2');
+      }).not.toThrow();
+    });
+  });
+
   describe('span events without active chat span', () => {
     it('does not throw when recording events without a turn', () => {
       const callbacks = tracer.createCallbacks('session-1', 'claude-sonnet-4');
