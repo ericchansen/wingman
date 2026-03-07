@@ -1,5 +1,5 @@
 {
-  "name": "@wingman/react",
+  "name": "@wingman-chat/react",
   "version": "0.1.0",
   "description": "React hooks and components for Wingman chat",
   "type": "module",
@@ -22,7 +22,8 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "lint": "eslint src/",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "copilot",
@@ -45,7 +46,7 @@
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "wingman": "workspace:*"
+    "@wingman-chat/core": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

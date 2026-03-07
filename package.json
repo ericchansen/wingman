@@ -9,11 +9,15 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "clean": "turbo run clean",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "turbo run build && changeset publish",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {
-    "turbo": "^2.4.0",
+    "@changesets/cli": "^2.30.0",
     "prettier": "^3.4.0",
+    "turbo": "^2.4.0",
     "typescript": "^5.7.0"
   }
 }
