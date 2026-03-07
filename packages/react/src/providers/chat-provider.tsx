@@ -252,6 +252,10 @@ export interface ChatContextValue {
   sendMessage: (message: string) => void;
   /** Clear the current conversation and start fresh. */
   newChat: () => void;
+  /** Switch the model for the current session. */
+  switchModel: (model: string) => Promise<void>;
+  /** Set the agent mode for the current session. */
+  setMode: (mode: string) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -353,9 +357,47 @@ export function ChatProvider({ children, apiUrl = '', theme, colors, className }
     dispatch({ type: 'CLEAR_MESSAGES' });
   }, []);
 
+  const switchModel = useCallback(
+    async (model: string) => {
+      if (!state.sessionId) return;
+      try {
+        const res = await fetch(`${apiUrl}/api/session/${state.sessionId}/model`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model }),
+        });
+        if (res.ok) {
+          dispatch({ type: 'SET_MODEL', model });
+        }
+      } catch {
+        /* silently fail */
+      }
+    },
+    [apiUrl, state.sessionId],
+  );
+
+  const setMode = useCallback(
+    async (mode: string) => {
+      if (!state.sessionId) return;
+      try {
+        const res = await fetch(`${apiUrl}/api/session/${state.sessionId}/mode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        });
+        if (res.ok) {
+          dispatch({ type: 'SET_MODE', mode });
+        }
+      } catch {
+        /* silently fail */
+      }
+    },
+    [apiUrl, state.sessionId],
+  );
+
   return (
     <ThemeProvider theme={theme} colors={colors} className={className}>
-      <ChatContext.Provider value={{ state, dispatch, sendMessage, newChat }}>
+      <ChatContext.Provider value={{ state, dispatch, sendMessage, newChat, switchModel, setMode }}>
         {children}
       </ChatContext.Provider>
     </ThemeProvider>
