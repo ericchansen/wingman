@@ -226,6 +226,8 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
     let closed = false;
     res.on('close', () => {
       closed = true;
+      clearInterval(keepalive);
+      clearTimeout(timeout);
     });
 
     // SSE send helper
