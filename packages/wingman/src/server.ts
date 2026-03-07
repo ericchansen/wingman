@@ -222,14 +222,6 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
       res.socket.setNoDelay(true);
     }
 
-    // Track client disconnection — use res.on('close'), NOT req.on('close')
-    let closed = false;
-    res.on('close', () => {
-      closed = true;
-      clearInterval(keepalive);
-      clearTimeout(timeout);
-    });
-
     // SSE send helper
     const send = (event: string, data: Record<string, unknown>) => {
       if (closed) return;
@@ -253,6 +245,14 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
         res.write(`: keepalive\n\n`);
       }
     }, 5000);
+
+    // Track client disconnection — registered after timers to avoid TDZ
+    let closed = false;
+    res.on('close', () => {
+      closed = true;
+      clearInterval(keepalive);
+      clearTimeout(timeout);
+    });
 
     // Send initial heartbeat
     send('heartbeat', { status: 'connected' });

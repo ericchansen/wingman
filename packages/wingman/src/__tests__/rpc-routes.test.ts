@@ -165,4 +165,31 @@ describe('RPC routes', () => {
       expect(res.body).toHaveProperty('chat');
     });
   });
+
+  describe('Input validation', () => {
+    it('rejects invalid session ID format in model route', async () => {
+      const res = await agent.post('/api/session/bad session id!/model').send({ model: 'gpt-4o' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Invalid session ID format');
+    });
+
+    it('rejects invalid session ID format in mode GET route', async () => {
+      const res = await agent.get('/api/session/has spaces here/mode');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Invalid session ID format');
+    });
+
+    it('rejects invalid session ID format in mode POST route', async () => {
+      const res = await agent.post('/api/session/id%20with%20spaces/mode').send({ mode: 'plan' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Invalid session ID format');
+    });
+
+    it('accepts valid session ID formats', async () => {
+      // UUID-style and alphanumeric-dash should pass validation
+      const res = await agent.post('/api/session/abc-123-def/model').send({ model: 'gpt-4o' });
+      // Should not be 400 for invalid ID — may be 404/500 if session doesn't exist
+      expect(res.status).not.toBe(400);
+    });
+  });
 });
