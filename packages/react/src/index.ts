@@ -9,6 +9,8 @@
 export { ChatProvider, useChat } from './providers/chat-provider.js';
 export type { ChatProviderProps, ChatState, ChatContextValue } from './providers/chat-provider.js';
 
+export { useAutoScroll } from './hooks/use-auto-scroll.js';
+
 export { ThemeProvider, useTheme } from './providers/theme-provider.js';
 export type {
   ThemeProviderProps,

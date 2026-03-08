@@ -178,7 +178,11 @@ export class WingmanClient {
 
   /** Build MCP server configs from discovery + user config, and populate skill directories. */
   private async buildMCPServers() {
-    const result = await discoverWithDiagnostics(this.config.mcpServers);
+    const result = await discoverWithDiagnostics(
+      this.config.mcpServers,
+      undefined,
+      this.config.fabricAuth,
+    );
 
     // Always recompute from (fresh discovery) + (original user dirs) — never accumulate stale paths
     this.config.skillDirectories = [...new Set([...result.skillDirectories, ...this.userSkillDirectories])];

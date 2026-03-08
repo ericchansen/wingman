@@ -21,6 +21,7 @@ export const DEFAULT_CONFIG: Required<WingmanConfig> = {
   skillDirectories: [],
   customAgents: [],
   tools: [],
+  fabricAuth: 'inject',
   ui: {
     title: 'Wingman',
     theme: 'system',
@@ -56,5 +57,6 @@ export function resolveConfig(userConfig: WingmanConfig): Required<WingmanConfig
     ui: { ...DEFAULT_CONFIG.ui, ...userConfig.ui },
     server: { ...DEFAULT_CONFIG.server, ...userConfig.server },
     telemetry: { ...DEFAULT_CONFIG.telemetry, ...userConfig.telemetry },
+    fabricAuth: userConfig.fabricAuth ?? DEFAULT_CONFIG.fabricAuth,
   };
 }
