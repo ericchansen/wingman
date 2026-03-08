@@ -8,7 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@wingman-chat/core": "workspace:*",
+    "@wingmanjs/core": "workspace:*",
     "express": "^4.21.0"
   },
   "devDependencies": {

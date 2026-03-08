@@ -1,10 +1,10 @@
 {
-  "name": "create-wingman-chat-app",
+  "name": "create-wingman-app",
   "version": "0.1.0",
   "description": "Create a new Wingman chat app",
   "type": "module",
   "bin": {
-    "create-wingman-chat-app": "./dist/index.js"
+    "create-wingman-app": "./dist/index.js"
   },
   "files": [
     "dist"
