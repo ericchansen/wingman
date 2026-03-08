@@ -284,6 +284,9 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
     // Send initial heartbeat
     send('heartbeat', { status: 'connected' });
 
+    // Track active tools — detect orphaned starts (tools that never complete)
+    const activeTools = new Map<string, { toolName: string; startedAt: number }>();
+
     try {
       const resultSessionId = await client.sendMessage(
         sessionId,
@@ -296,11 +299,32 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
             send('reasoning', { content, reasoningId }),
           onUsage: (usage) => send('usage', usage as unknown as Record<string, unknown>),
           onTurnStart: (turnId) => send('turn_start', { turnId }),
-          onTurnEnd: (turnId) => send('turn_end', { turnId }),
+          onTurnEnd: (turnId) => {
+            // Detect orphaned tools — started but never completed
+            if (activeTools.size > 0) {
+              for (const [toolCallId, info] of activeTools) {
+                const elapsed = Date.now() - info.startedAt;
+                console.warn(`⚠️ Tool "${info.toolName}" (${toolCallId}) started but never completed (${elapsed}ms) — MCP error may have been swallowed`);
+                send('tool_complete', {
+                  toolCallId,
+                  toolName: info.toolName,
+                  result: `[wingman] Tool "${info.toolName}" did not return a completion event. The MCP server may have returned an error that the SDK did not surface. Check MCP server logs.`,
+                  isError: true,
+                });
+              }
+              activeTools.clear();
+            }
+            send('turn_end', { turnId });
+          },
           onIntent: (intent) => send('intent', { intent }),
-          onToolStart: (tool) => send('tool_start', tool),
-          onToolComplete: (toolCallId, toolName, result) =>
-            send('tool_complete', { toolCallId, toolName, result }),
+          onToolStart: (tool) => {
+            activeTools.set(tool.toolCallId, { toolName: tool.toolName, startedAt: Date.now() });
+            send('tool_start', tool);
+          },
+          onToolComplete: (toolCallId, toolName, result) => {
+            activeTools.delete(toolCallId);
+            send('tool_complete', { toolCallId, toolName, result });
+          },
           onToolProgress: (toolCallId, message) =>
             send('tool_progress', { toolCallId, message }),
           onSkillInvoked: (name, pluginName) =>
