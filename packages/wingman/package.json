@@ -27,6 +27,9 @@
     "test": "vitest run --exclude src/__tests__/server.test.ts",
     "prepublishOnly": "npm run build"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "copilot",
     "github",

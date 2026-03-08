@@ -25,6 +25,9 @@
     "test": "vitest run",
     "prepublishOnly": "npm run build"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "copilot",
     "github",
