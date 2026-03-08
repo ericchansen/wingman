@@ -41,9 +41,12 @@ export class WingmanClient {
   private client: CopilotClient | null = null;
   private config: Required<WingmanConfig>;
   private telemetry: ReturnType<typeof createTracer>;
+  /** Original user-provided skill directories (immutable). */
+  private readonly userSkillDirectories: string[];
 
   constructor(options: WingmanClientOptions = {}) {
     this.config = resolveConfig(options.config ?? {});
+    this.userSkillDirectories = [...this.config.skillDirectories];
     this.telemetry = createTracer(this.config.telemetry);
   }
 
@@ -165,11 +168,8 @@ export class WingmanClient {
   private async buildMCPServers() {
     const result = await discoverWithDiagnostics(this.config.mcpServers);
 
-    // Merge discovered skill directories with user-provided ones
-    if (result.skillDirectories.length > 0) {
-      const userSkills = this.config.skillDirectories ?? [];
-      this.config.skillDirectories = [...new Set([...result.skillDirectories, ...userSkills])];
-    }
+    // Always recompute from (fresh discovery) + (original user dirs) — never accumulate stale paths
+    this.config.skillDirectories = [...new Set([...result.skillDirectories, ...this.userSkillDirectories])];
 
     return result.servers;
   }
