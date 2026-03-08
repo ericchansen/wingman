@@ -6,7 +6,7 @@ Thanks for your interest in contributing to Wingman! This project aims to be the
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20.11+
 - pnpm 9+ (`npm install -g pnpm`)
 - GitHub Copilot CLI (for testing with real SDK)
 
@@ -25,7 +25,7 @@ pnpm dev
 ```
 packages/
 ├── wingman/          # Core: SDK wrapper, sessions, events, server
-├── react/            # @wingman/react: hooks + components
+├── react/            # @wingmanjs/react: hooks + components
 └── create-wingman-app/  # CLI scaffolding tool
 
 examples/

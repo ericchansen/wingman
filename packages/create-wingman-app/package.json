@@ -23,6 +23,15 @@
   ],
   "author": "Eric Hansen",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ericchansen/wingman.git",
+    "directory": "packages/create-wingman-app"
+  },
+  "homepage": "https://github.com/ericchansen/wingman#readme",
+  "bugs": {
+    "url": "https://github.com/ericchansen/wingman/issues"
+  },
   "dependencies": {
     "prompts": "^2.4.2",
     "picocolors": "^1.1.0"
