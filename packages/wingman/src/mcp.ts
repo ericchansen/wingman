@@ -279,6 +279,58 @@ async function injectAuthHeaders(servers: Record<string, MCPServerConfig>): Prom
 }
 
 // ---------------------------------------------------------------------------
+// Server config validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate discovered MCP server configs. Skips invalid entries and logs
+ * warnings for problems — prevents silent failures from malformed configs.
+ */
+function validateServers(
+  servers: Record<string, MCPServerConfig>,
+  diagnostics: string[],
+): Record<string, MCPServerConfig> {
+  const valid: Record<string, MCPServerConfig> = {};
+
+  for (const [name, config] of Object.entries(servers)) {
+    const cfg = config as unknown as Record<string, unknown>;
+
+    // Skip wrapper objects (e.g., an entry named "mcpServers" that's actually a nested wrapper)
+    if (cfg.mcpServers && typeof cfg.mcpServers === 'object') {
+      diagnostics.push(`  ⚠️ ${name} — skipped (wrapper object, not a server config)`);
+      continue;
+    }
+
+    // Validate type
+    const serverType = cfg.type as string | undefined;
+    if (!serverType) {
+      cfg.type = 'stdio';
+      diagnostics.push(`  ⚠️ ${name} — no type field, defaulting to stdio`);
+    }
+
+    // Validate command/url
+    const resolvedType = (cfg.type as string) ?? 'stdio';
+    if ((resolvedType === 'stdio' || resolvedType === 'local') && !cfg.command) {
+      diagnostics.push(`  ❌ ${name} — stdio server missing 'command', skipping`);
+      continue;
+    }
+    if ((resolvedType === 'http' || resolvedType === 'sse') && !cfg.url) {
+      diagnostics.push(`  ❌ ${name} — HTTP server missing 'url', skipping`);
+      continue;
+    }
+
+    // Default tools
+    if (!config.tools || !Array.isArray(config.tools)) {
+      config.tools = ['*'];
+    }
+
+    valid[name] = config;
+  }
+
+  return valid;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -312,7 +364,8 @@ export async function discoverMCPServers(
   // Auth injection: add bearer tokens for HTTP servers that need them
   await injectAuthHeaders(result);
 
-  return result;
+  // Validate — skip malformed entries
+  return validateServers(result, []);
 }
 
 /**
@@ -399,6 +452,16 @@ export async function discoverWithDiagnostics(
     // Auth injection: add bearer tokens for HTTP servers that need them
     await injectAuthHeaders(servers);
 
+    // Validate — skip malformed entries, log warnings
+    const validated = validateServers(servers, diagnostics);
+    // Remove invalid servers from sources map too
+    for (const name of Object.keys(servers)) {
+      if (!(name in validated)) sources.delete(name);
+    }
+    Object.keys(servers).forEach((k) => { if (!(k in validated)) delete servers[k]; });
+    Object.assign(servers, validated);
+
+    discoverySpan.setAttribute('mcp.discovery.valid_servers', Object.keys(validated).length);
     discoverySpan.setStatus({ code: SpanStatusCode.OK });
   } catch (error) {
     discoverySpan.recordException(error as Error);
