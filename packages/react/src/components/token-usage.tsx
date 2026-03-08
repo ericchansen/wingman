@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import type { UsageData } from '@wingman-chat/core';
+import type { UsageData } from '@wingmanjs/core';
 
 export interface TokenUsageProps {
   usage: UsageData | null;

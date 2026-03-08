@@ -1,5 +1,5 @@
 {
-  "name": "@wingman-chat/react",
+  "name": "@wingmanjs/react",
   "version": "0.1.0",
   "description": "React hooks and components for Wingman chat",
   "type": "module",
@@ -45,7 +45,7 @@
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@wingman-chat/core": "workspace:*"
+    "@wingmanjs/core": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

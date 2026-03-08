@@ -5,7 +5,7 @@
  * Open: http://localhost:3000
  */
 
-import { startServer, defineConfig } from '@wingman-chat/core';
+import { startServer, defineConfig } from '@wingmanjs/core';
 
 const config = defineConfig({
   systemPrompt: 'You are a helpful assistant. Be concise and friendly.',

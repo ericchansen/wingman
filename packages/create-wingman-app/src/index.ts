@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * create-wingman-chat-app — Scaffold a new Wingman chat application.
+ * create-wingman-app — Scaffold a new Wingman chat application.
  *
  * Usage:
- *   npx create-wingman-chat-app my-chat
- *   npx create-wingman-chat-app my-chat --template minimal
+ *   npx create-wingman-app my-chat
+ *   npx create-wingman-app my-chat --template minimal
  */
 
-console.log('🛩️  create-wingman-chat-app — coming soon');
+console.log('🛩️  create-wingman-app — coming soon');
 console.log('');
 console.log('In the meantime, clone the repo:');
 console.log('  git clone https://github.com/ericchansen/wingman.git');

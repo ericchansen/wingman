@@ -34,7 +34,7 @@ Out of the box, Wingman is intentionally boring — a clean, generic chat interf
 
 ```typescript
 // wingman.config.ts
-import { defineConfig } from '@wingman-chat/core/config';
+import { defineConfig } from '@wingmanjs/core/config';
 
 export default defineConfig({
   systemPrompt: 'You are a sales intelligence assistant named Clippy...',
@@ -52,9 +52,9 @@ export default defineConfig({
 
 | Package | npm | Description |
 |---------|-----|-------------|
-| `@wingman-chat/core` | [![npm](https://img.shields.io/npm/v/@wingman-chat/core)](https://npmjs.com/package/@wingman-chat/core) | Core SDK wrapper, session management, MCP discovery, Express server |
-| `@wingman-chat/react` | [![npm](https://img.shields.io/npm/v/@wingman-chat/react)](https://npmjs.com/package/@wingman-chat/react) | React 19 hooks + shadcn/ui components |
-| `create-wingman-chat-app` | [![npm](https://img.shields.io/npm/v/create-wingman-chat-app)](https://npmjs.com/package/create-wingman-chat-app) | Project scaffolding CLI |
+| `@wingmanjs/core` | [![npm](https://img.shields.io/npm/v/@wingmanjs/core)](https://npmjs.com/package/@wingmanjs/core) | Core SDK wrapper, session management, MCP discovery, Express server |
+| `@wingmanjs/react` | [![npm](https://img.shields.io/npm/v/@wingmanjs/react)](https://npmjs.com/package/@wingmanjs/react) | React 19 hooks + shadcn/ui components |
+| `create-wingman-app` | [![npm](https://img.shields.io/npm/v/create-wingman-app)](https://npmjs.com/package/create-wingman-app) | Project scaffolding CLI |
 
 ## Quick Start
 
@@ -65,7 +65,7 @@ export default defineConfig({
 
 ### Create a new app
 
-> **Note:** `create-wingman-chat-app` is not yet implemented. For now, clone the repo directly:
+> **Note:** `create-wingman-app` is not yet implemented. For now, clone the repo directly:
 
 ```bash
 git clone https://github.com/ericchansen/wingman.git
@@ -92,7 +92,7 @@ Restart your app — the new tools appear automatically.
 Everything is controlled via `wingman.config.ts`:
 
 ```typescript
-import { defineConfig } from '@wingman-chat/core/config';
+import { defineConfig } from '@wingmanjs/core/config';
 
 export default defineConfig({
   // Agent behavior

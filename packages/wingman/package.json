@@ -1,5 +1,5 @@
 {
-  "name": "@wingman-chat/core",
+  "name": "@wingmanjs/core",
   "version": "0.1.0",
   "description": "The open-source chat app for the GitHub Copilot SDK",
   "type": "module",

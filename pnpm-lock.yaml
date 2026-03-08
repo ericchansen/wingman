@@ -23,7 +23,7 @@ importers:
 
   examples/hello-wingman:
     dependencies:
-      '@wingman-chat/core':
+      '@wingmanjs/core':
         specifier: workspace:*
         version: link:../../packages/wingman
       express:
@@ -64,7 +64,7 @@ importers:
 
   packages/react:
     dependencies:
-      '@wingman-chat/core':
+      '@wingmanjs/core':
         specifier: workspace:*
         version: link:../wingman
       react-markdown:
