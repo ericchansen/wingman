@@ -8,6 +8,13 @@ vi.mock('node:fs/promises', () => ({
   stat: vi.fn().mockRejectedValue(new Error('ENOENT')),
 }));
 
+// Mock child_process to avoid real az CLI calls (Fabric auth injection)
+vi.mock('node:child_process', () => ({
+  execFile: vi.fn((_cmd: string, _args: string[], _opts: unknown, cb: Function) => {
+    cb(new Error('az not available in test'), '', '');
+  }),
+}));
+
 describe('discoverMCPServers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
