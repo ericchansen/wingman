@@ -8,7 +8,7 @@
 import { CopilotClient, approveAll, type SessionEvent, type MCPServerConfig as SDKMCPServerConfig } from '@github/copilot-sdk';
 import type { WingmanConfig, AgentMode } from './types.js';
 import { resolveConfig } from './config.js';
-import { discoverMCPServers } from './mcp.js';
+import { discoverWithDiagnostics } from './mcp.js';
 import { EventRouter, type EventCallbacks } from './events.js';
 import { createTracer } from './telemetry.js';
 
@@ -161,9 +161,17 @@ export class WingmanClient {
     return session.sessionId ?? session.id ?? 'unknown';
   }
 
-  /** Build MCP server configs from discovery + user config. */
+  /** Build MCP server configs from discovery + user config, and populate skill directories. */
   private async buildMCPServers() {
-    return discoverMCPServers(this.config.mcpServers);
+    const result = await discoverWithDiagnostics(this.config.mcpServers);
+
+    // Merge discovered skill directories with user-provided ones
+    if (result.skillDirectories.length > 0) {
+      const userSkills = this.config.skillDirectories ?? [];
+      this.config.skillDirectories = [...new Set([...result.skillDirectories, ...userSkills])];
+    }
+
+    return result.servers;
   }
 
   /** Gracefully shut down the client. */
