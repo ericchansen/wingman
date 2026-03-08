@@ -180,7 +180,11 @@ export class EventRouter {
         break;
       case 'tool.execution_complete': {
         let resultStr = '';
-        if (data?.result != null) {
+
+        // Check for error first — SDK puts MCP errors in data.error, not data.result
+        if (data?.success === false && data?.error?.message) {
+          resultStr = `[Error] ${data.error.message}`;
+        } else if (data?.result != null) {
           if (typeof data.result === 'object') {
             const content = data.result.content ?? data.result;
             if (Array.isArray(content)) {
@@ -199,15 +203,17 @@ export class EventRouter {
           }
         }
 
-        // Log tool results for diagnostics (truncated for readability)
+        // Log tool results for diagnostics
         const toolName = data?.toolName ?? '';
-        const preview = resultStr.slice(0, 200);
-        if (resultStr.length === 0) {
-          console.warn(`⚠️ Tool "${toolName}" (${data?.toolCallId}) completed with empty result — possible MCP error swallowed by SDK`);
+        if (data?.success === false) {
+          console.warn(`❌ Tool "${toolName}" failed: ${resultStr.slice(0, 300)}`);
+        } else if (resultStr.length === 0) {
+          console.warn(`⚠️ Tool "${toolName}" (${data?.toolCallId}) completed with empty result`);
           if (this.debug) {
             console.debug('[tool.execution_complete raw data]', JSON.stringify(data).slice(0, 500));
           }
         } else if (this.debug) {
+          const preview = resultStr.slice(0, 200);
           console.debug(`[tool.complete] ${toolName}: ${preview}${resultStr.length > 200 ? '...' : ''} (${resultStr.length} chars)`);
         }
 
