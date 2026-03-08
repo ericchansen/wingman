@@ -304,8 +304,10 @@ export interface WingmanConfig {
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   mcpServers?: Record<string, MCPServerConfig>;
   skillDirectories?: string[];
-  customAgents?: string[];
-  tools?: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  customAgents?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tools?: any[];
   ui?: WingmanUIConfig;
   server?: WingmanServerConfig;
   telemetry?: WingmanTelemetryConfig;

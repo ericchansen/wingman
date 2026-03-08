@@ -52,6 +52,7 @@ export function resolveConfig(userConfig: WingmanConfig): Required<WingmanConfig
   return {
     ...DEFAULT_CONFIG,
     ...userConfig,
+    mcpServers: { ...DEFAULT_CONFIG.mcpServers, ...userConfig.mcpServers },
     ui: { ...DEFAULT_CONFIG.ui, ...userConfig.ui },
     server: { ...DEFAULT_CONFIG.server, ...userConfig.server },
     telemetry: { ...DEFAULT_CONFIG.telemetry, ...userConfig.telemetry },
