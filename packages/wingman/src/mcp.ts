@@ -190,6 +190,10 @@ async function runDiscoveryStage(
 /** Cached Fabric token — refreshed when expired. */
 let _fabricToken: { token: string; expiresOn: Date } | null = null;
 
+/** Negative cache — avoid repeated 10s timeouts when az CLI is missing. */
+let _fabricTokenFailedAt: number | null = null;
+const NEGATIVE_CACHE_TTL_MS = 60_000; // 60 seconds
+
 /**
  * Acquire an Azure AD token for the Fabric API via `az account get-access-token`.
  * Returns the bearer token string or null on failure.
@@ -204,6 +208,11 @@ async function acquireFabricToken(): Promise<string | null> {
     _fabricToken = null;
   }
 
+  // Negative cache: skip if we failed recently
+  if (_fabricTokenFailedAt && Date.now() - _fabricTokenFailedAt < NEGATIVE_CACHE_TTL_MS) {
+    return null;
+  }
+
   try {
     const { stdout } = await execFileAsync(
       'az',
@@ -213,10 +222,11 @@ async function acquireFabricToken(): Promise<string | null> {
     const result = JSON.parse(stdout);
     if (result.accessToken) {
       _fabricToken = { token: result.accessToken, expiresOn: new Date(result.expiresOn) };
+      _fabricTokenFailedAt = null;
       return result.accessToken;
     }
   } catch {
-    // Azure CLI not available or not logged in — silently continue
+    _fabricTokenFailedAt = Date.now();
   }
   return null;
 }
@@ -224,11 +234,19 @@ async function acquireFabricToken(): Promise<string | null> {
 /**
  * Inject auth headers for HTTP MCP servers that need them.
  * Currently: Fabric API (*.fabric.microsoft.com) gets an Azure AD bearer token.
+ * Uses URL hostname parsing to prevent token leakage to untrusted hosts.
  */
 async function injectAuthHeaders(servers: Record<string, MCPServerConfig>): Promise<void> {
   const fabricServers = Object.values(servers).filter(
-    (s): s is MCPServerConfig & { type: 'http'; url: string } =>
-      s.type === 'http' && 'url' in s && typeof s.url === 'string' && s.url.includes('fabric.microsoft.com'),
+    (s): s is MCPServerConfig & { type: 'http'; url: string } => {
+      if (s.type !== 'http' || !('url' in s) || typeof s.url !== 'string') return false;
+      try {
+        const hostname = new URL(s.url).hostname;
+        return hostname === 'api.fabric.microsoft.com' || hostname.endsWith('.fabric.microsoft.com');
+      } catch {
+        return false;
+      }
+    },
   );
 
   if (fabricServers.length === 0) return;
