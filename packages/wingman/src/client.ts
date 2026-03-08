@@ -90,6 +90,18 @@ export class WingmanClient {
       onPermissionRequest: approveAll,
     };
 
+    // Session creation summary — confirms what the SDK will receive
+    const serverNames = Object.keys(mcpServers);
+    const serverSummary = serverNames.map((name) => {
+      const cfg = mcpServers[name] as unknown as Record<string, unknown>;
+      const type = (cfg.type as string) ?? 'stdio';
+      const auth = cfg.headers ? '🔑' : '';
+      return `${name}(${type}${auth})`;
+    }).join(', ');
+    console.log(`📋 Session: ${serverNames.length} MCP servers [${serverSummary}], ` +
+      `${this.config.skillDirectories?.length ?? 0} skill dirs, ` +
+      `${this.config.tools?.length ?? 0} tools`);
+
     let session;
     if (sessionId) {
       session = await client.resumeSession(sessionId, sessionConfig);
