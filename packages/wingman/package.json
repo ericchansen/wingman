@@ -41,6 +41,15 @@
   ],
   "author": "Eric Hansen",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ericchansen/wingman.git",
+    "directory": "packages/wingman"
+  },
+  "homepage": "https://github.com/ericchansen/wingman#readme",
+  "bugs": {
+    "url": "https://github.com/ericchansen/wingman/issues"
+  },
   "files": [
     "dist"
   ],
