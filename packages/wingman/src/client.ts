@@ -82,6 +82,8 @@ export class WingmanClient {
       systemMessage: { content: this.config.systemPrompt },
       mcpServers,
       skillDirectories: this.config.skillDirectories,
+      customAgents: this.config.customAgents,
+      tools: this.config.tools,
       onPermissionRequest: approveAll,
     };
 

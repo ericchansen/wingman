@@ -10,10 +10,14 @@
  */
 
 import { readFile, readdir, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { trace, SpanStatusCode, context, type Span } from '@opentelemetry/api';
 import type { MCPServerConfig } from './types.js';
+
+const execFileAsync = promisify(execFile);
 
 const MCP_TRACER = 'wingman';
 
@@ -180,6 +184,64 @@ async function runDiscoveryStage(
 }
 
 // ---------------------------------------------------------------------------
+// Auth injection — Fabric/Power BI token for HTTP MCP servers
+// ---------------------------------------------------------------------------
+
+/** Cached Fabric token — refreshed when expired. */
+let _fabricToken: { token: string; expiresOn: Date } | null = null;
+
+/**
+ * Acquire an Azure AD token for the Fabric API via `az account get-access-token`.
+ * Returns the bearer token string or null on failure.
+ * Cached in-process with a 2-minute expiry buffer.
+ */
+async function acquireFabricToken(): Promise<string | null> {
+  if (_fabricToken) {
+    const bufferMs = 2 * 60 * 1000;
+    if (_fabricToken.expiresOn.getTime() - Date.now() > bufferMs) {
+      return _fabricToken.token;
+    }
+    _fabricToken = null;
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      'az',
+      ['account', 'get-access-token', '--resource', 'https://api.fabric.microsoft.com', '--output', 'json'],
+      { timeout: 10_000, shell: true },
+    );
+    const result = JSON.parse(stdout);
+    if (result.accessToken) {
+      _fabricToken = { token: result.accessToken, expiresOn: new Date(result.expiresOn) };
+      return result.accessToken;
+    }
+  } catch {
+    // Azure CLI not available or not logged in — silently continue
+  }
+  return null;
+}
+
+/**
+ * Inject auth headers for HTTP MCP servers that need them.
+ * Currently: Fabric API (*.fabric.microsoft.com) gets an Azure AD bearer token.
+ */
+async function injectAuthHeaders(servers: Record<string, MCPServerConfig>): Promise<void> {
+  const fabricServers = Object.values(servers).filter(
+    (s): s is MCPServerConfig & { type: 'http'; url: string } =>
+      s.type === 'http' && 'url' in s && typeof s.url === 'string' && s.url.includes('fabric.microsoft.com'),
+  );
+
+  if (fabricServers.length === 0) return;
+
+  const token = await acquireFabricToken();
+  if (!token) return;
+
+  for (const server of fabricServers) {
+    server.headers = { ...server.headers, Authorization: `Bearer ${token}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -209,6 +271,9 @@ export async function discoverMCPServers(
   if (userOverrides) {
     Object.assign(result, userOverrides);
   }
+
+  // Auth injection: add bearer tokens for HTTP servers that need them
+  await injectAuthHeaders(result);
 
   return result;
 }
@@ -293,6 +358,10 @@ export async function discoverWithDiagnostics(
     }
 
     discoverySpan.setAttribute('mcp.discovery.total_servers', Object.keys(servers).length);
+
+    // Auth injection: add bearer tokens for HTTP servers that need them
+    await injectAuthHeaders(servers);
+
     discoverySpan.setStatus({ code: SpanStatusCode.OK });
   } catch (error) {
     discoverySpan.recordException(error as Error);
