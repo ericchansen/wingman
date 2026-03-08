@@ -298,16 +298,16 @@ export interface WingmanTelemetryConfig {
   captureContent?: boolean;
 }
 
+import type { Tool, CustomAgentConfig as SDKCustomAgentConfig } from '@github/copilot-sdk';
+
 export interface WingmanConfig {
   systemPrompt?: string;
   model?: string;
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   mcpServers?: Record<string, MCPServerConfig>;
   skillDirectories?: string[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  customAgents?: any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools?: any[];
+  customAgents?: SDKCustomAgentConfig[];
+  tools?: Tool[];
   ui?: WingmanUIConfig;
   server?: WingmanServerConfig;
   telemetry?: WingmanTelemetryConfig;

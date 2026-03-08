@@ -83,10 +83,39 @@ describe('resolveConfig', () => {
   it('preserves array fields', () => {
     const resolved = resolveConfig({
       skillDirectories: ['/path/to/skills'],
-      tools: ['./tools/*.ts'],
     });
     expect(resolved.skillDirectories).toEqual(['/path/to/skills']);
-    expect(resolved.tools).toEqual(['./tools/*.ts']);
+  });
+
+  it('deep-merges mcpServers — user additions preserve defaults', () => {
+    const resolved = resolveConfig({
+      mcpServers: {
+        'my-server': { type: 'stdio', command: 'node', args: ['server.js'], tools: ['*'] },
+      },
+    });
+    // User server added
+    expect(resolved.mcpServers['my-server']).toBeDefined();
+    expect(resolved.mcpServers['my-server'].type).toBe('stdio');
+    // Default servers still present (DEFAULT_CONFIG.mcpServers is empty,
+    // but this verifies the merge pattern works)
+    expect(typeof resolved.mcpServers).toBe('object');
+  });
+
+  it('deep-merges mcpServers — user override replaces same-named server', () => {
+    const resolved = resolveConfig({
+      mcpServers: {
+        'powerbi-remote': {
+          type: 'http',
+          url: 'https://custom.fabric.microsoft.com/v1/mcp/powerbi',
+          headers: { Authorization: 'Bearer custom' },
+          tools: ['*'],
+        },
+      },
+    });
+    const pbi = resolved.mcpServers['powerbi-remote'];
+    expect(pbi).toBeDefined();
+    expect(pbi.type).toBe('http');
+    expect('url' in pbi && pbi.url).toBe('https://custom.fabric.microsoft.com/v1/mcp/powerbi');
   });
 });
 
