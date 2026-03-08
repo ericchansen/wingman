@@ -183,14 +183,37 @@ export class EventRouter {
         if (data?.result != null) {
           if (typeof data.result === 'object') {
             const content = data.result.content ?? data.result;
-            resultStr = typeof content === 'string' ? content : JSON.stringify(content);
+            if (Array.isArray(content)) {
+              // MCP format: [{type:"text", text:"..."}]
+              resultStr = content
+                .map((item: Record<string, unknown>) =>
+                  typeof item === 'string' ? item : (item.text ?? JSON.stringify(item)))
+                .join('\n');
+            } else if (typeof content === 'string') {
+              resultStr = content;
+            } else {
+              resultStr = JSON.stringify(content);
+            }
           } else {
             resultStr = String(data.result);
           }
         }
+
+        // Log tool results for diagnostics (truncated for readability)
+        const toolName = data?.toolName ?? '';
+        const preview = resultStr.slice(0, 200);
+        if (resultStr.length === 0) {
+          console.warn(`⚠️ Tool "${toolName}" (${data?.toolCallId}) completed with empty result — possible MCP error swallowed by SDK`);
+          if (this.debug) {
+            console.debug('[tool.execution_complete raw data]', JSON.stringify(data).slice(0, 500));
+          }
+        } else if (this.debug) {
+          console.debug(`[tool.complete] ${toolName}: ${preview}${resultStr.length > 200 ? '...' : ''} (${resultStr.length} chars)`);
+        }
+
         this.callbacks.onToolComplete?.(
           data?.toolCallId ?? '',
-          data?.toolName ?? '',
+          toolName,
           resultStr,
         );
         break;
