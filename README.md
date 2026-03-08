@@ -211,6 +211,27 @@ Open `http://localhost:18888`.
 | `mcp.discovery.stage1_builtins` … `stage5` | Per-stage child spans |
 | `mcp.connect` | MCP server connection lifecycle |
 
+## MCP Server Authentication
+
+Wingman automatically handles OAuth token injection for remote MCP servers (e.g., Power BI). It reads cached tokens from the Copilot CLI's OAuth cache (`~/.copilot/mcp-oauth-config/`), falling back to `az` CLI.
+
+See **[docs/mcp-auth.md](docs/mcp-auth.md)** for the full guide, including:
+- The three-tier token acquisition strategy
+- The Power BI two-token problem (audience + appid)
+- JWT debugging cheat sheet
+- How to add auth for custom MCP servers
+
+Quick config:
+
+```typescript
+export default defineConfig({
+  // 'inject' (default) — read CLI cache + az fallback, inject Authorization header
+  // 'cli' — let the SDK subprocess handle auth (requires interactive terminal)
+  // 'none' — no auth injection
+  fabricAuth: 'inject',
+});
+```
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.

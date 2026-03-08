@@ -214,9 +214,51 @@ let _fabricTokenFailedAt: number | null = null;
 const NEGATIVE_CACHE_TTL_MS = 60_000; // 60 seconds
 
 /**
- * Acquire an Azure AD token for the Fabric API via `az account get-access-token`.
- * Returns the bearer token string or null on failure.
- * Cached in-process with a 2-minute expiry buffer.
+ * Try to read a Power BI token from the Copilot CLI's OAuth cache.
+ *
+ * The CLI caches tokens at `~/.copilot/mcp-oauth-config/*.tokens.json`.
+ * We look for the file whose `scope` includes `analysis.windows.net/powerbi/api`
+ * — that's the token with the correct audience and app registration
+ * (appid `aebc6443-...`) that Power BI capacities authorize for DAX execution.
+ *
+ * The `az` CLI's own app (`04b07795-...`) gets a token with the right audience
+ * but is not registered for DAX execution on most Power BI capacities.
+ */
+async function readCliCachedPowerBiToken(): Promise<string | null> {
+  const cacheDir = join(homedir(), '.copilot', 'mcp-oauth-config');
+  if (!(await exists(cacheDir))) return null;
+
+  try {
+    const files = await readdir(cacheDir);
+    const tokenFiles = files.filter(f => f.endsWith('.tokens.json'));
+
+    for (const file of tokenFiles) {
+      const content = await readJson<{ accessToken?: string; expiresAt?: number; scope?: string }>(join(cacheDir, file));
+      if (!content?.accessToken || !content.scope) continue;
+
+      // Match the Power BI-scoped token (not WorkIQ/M365 tokens)
+      if (content.scope.includes('analysis.windows.net/powerbi/api')) {
+        const expiresAt = content.expiresAt ? content.expiresAt * 1000 : 0;
+        const bufferMs = 2 * 60 * 1000;
+        if (expiresAt - Date.now() > bufferMs) {
+          return content.accessToken;
+        }
+        // Token expired — skip, will fall through to az CLI
+      }
+    }
+  } catch {
+    // Cache dir unreadable — not fatal
+  }
+  return null;
+}
+
+/**
+ * Acquire a Power BI token for the Fabric MCP API.
+ *
+ * Strategy (in order):
+ * 1. In-process cache (fastest)
+ * 2. Copilot CLI's OAuth cache (correct appid for DAX execution)
+ * 3. `az account get-access-token` (fallback — metadata works, DAX may not)
  */
 async function acquireFabricToken(): Promise<string | null> {
   if (_fabricToken) {
@@ -227,7 +269,23 @@ async function acquireFabricToken(): Promise<string | null> {
     _fabricToken = null;
   }
 
-  // Negative cache: skip if we failed recently
+  // Strategy 1: Read from Copilot CLI's OAuth cache (has correct appid for DAX)
+  const cliToken = await readCliCachedPowerBiToken();
+  if (cliToken) {
+    // Decode expiry from JWT payload
+    try {
+      const payload = cliToken.split('.')[1];
+      const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+      const decoded = JSON.parse(Buffer.from(padded, 'base64url').toString());
+      _fabricToken = { token: cliToken, expiresOn: new Date(decoded.exp * 1000) };
+      return cliToken;
+    } catch {
+      // JWT decode failed — use token without caching expiry
+      return cliToken;
+    }
+  }
+
+  // Strategy 2: Fall back to az CLI (may lack DAX execution permissions)
   if (_fabricTokenFailedAt && Date.now() - _fabricTokenFailedAt < NEGATIVE_CACHE_TTL_MS) {
     return null;
   }
@@ -235,7 +293,7 @@ async function acquireFabricToken(): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync(
       'az',
-      ['account', 'get-access-token', '--resource', 'https://api.fabric.microsoft.com', '--output', 'json'],
+      ['account', 'get-access-token', '--resource', 'https://analysis.windows.net/powerbi/api', '--output', 'json'],
       { timeout: 10_000, shell: true },
     );
     const result = JSON.parse(stdout);
@@ -340,6 +398,7 @@ function validateServers(
  */
 export async function discoverMCPServers(
   userOverrides?: Record<string, MCPServerConfig>,
+  fabricAuth: 'cli' | 'inject' | 'none' = 'cli',
 ): Promise<Record<string, MCPServerConfig>> {
   const result: Record<string, MCPServerConfig> = {};
 
@@ -362,7 +421,9 @@ export async function discoverMCPServers(
   }
 
   // Auth injection: add bearer tokens for HTTP servers that need them
-  await injectAuthHeaders(result);
+  if (fabricAuth === 'inject') {
+    await injectAuthHeaders(result);
+  }
 
   // Validate — skip malformed entries
   return validateServers(result, []);
@@ -375,6 +436,7 @@ export async function discoverMCPServers(
 export async function discoverWithDiagnostics(
   userOverrides?: Record<string, MCPServerConfig>,
   projectRoot?: string,
+  fabricAuth: 'cli' | 'inject' | 'none' = 'cli',
 ): Promise<DiscoveryResult> {
   const tracer = trace.getTracer(MCP_TRACER);
   const discoverySpan = tracer.startSpan('mcp.discovery', {
@@ -450,7 +512,9 @@ export async function discoverWithDiagnostics(
     discoverySpan.setAttribute('mcp.discovery.total_servers', Object.keys(servers).length);
 
     // Auth injection: add bearer tokens for HTTP servers that need them
-    await injectAuthHeaders(servers);
+    if (fabricAuth === 'inject') {
+      await injectAuthHeaders(servers);
+    }
 
     // Validate — skip malformed entries, log warnings
     const validated = validateServers(servers, diagnostics);

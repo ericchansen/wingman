@@ -308,6 +308,18 @@ export interface WingmanConfig {
   skillDirectories?: string[];
   customAgents?: SDKCustomAgentConfig[];
   tools?: Tool[];
+  /**
+   * How to authenticate to Fabric/Power BI remote MCP servers.
+   *
+   * - `'cli'` — (default) Don't inject tokens; let the CLI subprocess handle
+   *   auth via its own browser OAuth flow. This grants full DAX execution scope.
+   * - `'inject'` — Acquire a Fabric token via `az account get-access-token`
+   *   and inject it as an Authorization header. Only grants metadata-level access
+   *   (schema/discover work, but DAX ExecuteQuery fails with "Unauthorized").
+   * - `'none'` — No auth injection and no CLI auth. Server must be public or
+   *   pre-authenticated.
+   */
+  fabricAuth?: 'cli' | 'inject' | 'none';
   ui?: WingmanUIConfig;
   server?: WingmanServerConfig;
   telemetry?: WingmanTelemetryConfig;
