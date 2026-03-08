@@ -119,15 +119,34 @@ async function loadPluginServers(): Promise<{
           let pluginServers: Record<string, MCPServerConfig> = {};
 
           if (typeof pluginJson.mcpServers === 'string') {
-            // External file reference
+            // External file reference (e.g., ".mcp.json")
             const externalPath = join(pluginPath, pluginJson.mcpServers);
-            const external = await readJson<Record<string, MCPServerConfig>>(externalPath);
-            if (external) pluginServers = external;
+            const external = await readJson<Record<string, unknown>>(externalPath);
+            if (external) {
+              // Handle both formats:
+              // 1. Flat: { "server-name": { type, command, ... } }
+              // 2. Wrapped: { "mcpServers": { "server-name": { type, command, ... } } }
+              const unwrapped = (external.mcpServers && typeof external.mcpServers === 'object')
+                ? external.mcpServers as Record<string, MCPServerConfig>
+                : external as Record<string, MCPServerConfig>;
+              pluginServers = unwrapped;
+            }
           } else if (typeof pluginJson.mcpServers === 'object' && pluginJson.mcpServers !== null) {
             pluginServers = pluginJson.mcpServers;
           }
 
           for (const [name, config] of Object.entries(pluginServers)) {
+            const cfg = config as unknown as Record<string, unknown>;
+            // Set cwd for stdio servers so relative paths resolve from the plugin directory
+            if (cfg.type === 'stdio' || cfg.type === 'local' || !cfg.type) {
+              if (!cfg.cwd) {
+                cfg.cwd = pluginPath;
+              }
+            }
+            // Ensure tools field exists (SDK requires it)
+            if (!config.tools) {
+              config.tools = ['*'];
+            }
             servers[name] = config;
             diagnostics.push(`  ✅ ${name} ← plugin (${catalog}/${plugin})`);
           }
