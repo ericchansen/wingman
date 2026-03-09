@@ -4,11 +4,11 @@ Wingman automatically handles authentication for remote MCP servers that require
 
 ## How It Works
 
-When Wingman discovers HTTP-based MCP servers (like Power BI at `api.fabric.microsoft.com`), it needs to inject an `Authorization: Bearer <token>` header for the server to accept connections. Without a valid token, the MCP server won't complete the handshake and no tools will be discovered.
+When Wingman discovers HTTP-based MCP servers (like Power BI at `api.fabric.microsoft.com`), it needs to attach an `Authorization: Bearer <token>` header for the server to accept connections. Without a valid token, the MCP server won't complete the handshake and no tools will be discovered.
 
 ### Token Acquisition Strategy
 
-Wingman uses a **three-tier fallback** to acquire tokens for Fabric/Power BI MCP servers:
+Wingman uses a **four-tier fallback** to acquire tokens for Fabric/Power BI MCP servers:
 
 ```
 ┌─────────────────────────────┐
@@ -17,19 +17,27 @@ Wingman uses a **three-tier fallback** to acquire tokens for Fabric/Power BI MCP
 └────────────┬────────────────┘
              │ expired/miss
 ┌────────────▼────────────────┐
-│ 2. Copilot CLI OAuth cache  │  ← Best token (correct appid + scopes)
-│    ~/.copilot/mcp-oauth-    │
+│ 2. Wingman OAuth module     │  ← DEFAULT — standalone browser OAuth
+│    ~/.wingman/tokens/       │     RFC 9470 discovery, PKCE flow
+│    {hash}.json              │     Full DAX + browser UI support
+└────────────┬────────────────┘
+             │ no cached token / not configured
+┌────────────▼────────────────┐
+│ 3. Copilot CLI OAuth cache  │  ← Fallback (correct appid + scopes)
+│    ~/.copilot/mcp-oauth-    │     Requires prior `copilot` session
 │    config/*.tokens.json     │
 └────────────┬────────────────┘
              │ not found/expired
 ┌────────────▼────────────────┐
-│ 3. Azure CLI fallback       │  ← Metadata-only (schema/discover work,
+│ 4. Azure CLI fallback       │  ← Metadata-only (schema/discover work,
 │    az account get-access-   │     DAX execution may fail)
 │    token                    │
 └─────────────────────────────┘
 ```
 
-**Why the Copilot CLI token is preferred:** The CLI uses OAuth app `aebc6443-996d-45c2-90f0-388ff96faa56` with browser-based login. This app registration is authorized for full Power BI operations including DAX query execution. The Azure CLI app (`04b07795-8ddb-461a-bbee-02f9e1bf7b46`) can authenticate to the API but is typically not authorized for DAX execution on Power BI capacities — it only gets metadata-level access.
+**Why the Wingman OAuth module is the default:** It runs a standalone OAuth flow directly from your app — no dependency on the Copilot CLI or Azure CLI. The browser-based Authorization Code + PKCE flow produces tokens with the correct audience and app registration for full Power BI operations including DAX query execution. It also exposes `/api/auth/*` routes so a browser UI can trigger and monitor login.
+
+**Copilot CLI cache as fallback:** The CLI uses OAuth app `aebc6443-996d-45c2-90f0-388ff96faa56` with browser-based login. This app registration is also authorized for full Power BI operations. The Azure CLI app (`04b07795-8ddb-461a-bbee-02f9e1bf7b46`) can authenticate but is typically not authorized for DAX execution — it only gets metadata-level access.
 
 ### The Two-Token Problem (Power BI)
 
@@ -47,7 +55,7 @@ Even with the correct audience (`analysis.windows.net/powerbi/api`), the `appid`
 2. **App ID:** `aebc6443-996d-45c2-90f0-388ff96faa56` (Copilot CLI's registration)
 3. **Scopes:** `user_impersonation` + `.default`
 
-### Copilot CLI OAuth Flow
+### Copilot CLI OAuth Flow (Fallback)
 
 When the Copilot CLI starts a new session, it opens **two browser windows** for Microsoft OAuth:
 
@@ -90,21 +98,190 @@ Control how Wingman authenticates to Fabric/Power BI MCP servers:
 import { defineConfig } from '@wingmanjs/core/config';
 
 export default defineConfig({
-  fabricAuth: 'inject',  // default
+  fabricAuth: 'oauth',  // default
 });
 ```
 
 | Value | Behavior |
 |-------|----------|
-| `'inject'` | **(Default)** Acquire token via CLI cache → `az` CLI fallback, inject as `Authorization` header |
+| `'oauth'` | **(Default)** Standalone OAuth module — discovers auth requirements via RFC 9470, runs browser Authorization Code + PKCE flow, caches tokens to `~/.wingman/tokens/`. Exposes `/api/auth/*` routes for browser UI login. |
+| `'inject'` | Legacy inject mode — acquires token via Copilot CLI cache → `az` CLI fallback, injects as `Authorization` header. No browser UI login support. |
 | `'cli'` | Don't inject any token — let the SDK's CLI subprocess handle auth via its own browser OAuth. Requires interactive terminal. |
 | `'none'` | No auth injection. Server must be public or pre-authenticated. |
 
+### Strategy Comparison
+
+| Strategy | Standalone? | DAX Works? | Browser UI? | Default? |
+|----------|-------------|------------|-------------|----------|
+| `'oauth'` | Yes | Yes | Yes | **Yes** |
+| `'cli'` | No | Yes | No | No |
+| `'inject'` | Yes | No* | No | No |
+| `'none'` | Yes | N/A | N/A | No |
+
+\* `'inject'` reads cached tokens that may have the correct `appid` for DAX (via Copilot CLI cache), but the `az` CLI fallback token typically does **not** have DAX authorization.
+
 ### When to Use Each
 
-- **`'inject'` (default):** Best for most apps. Reads the Copilot CLI's cached token (from a prior `copilot` session) so your app doesn't need its own OAuth flow. Falls back to `az` CLI if no cached token exists.
+- **`'oauth'` (default):** Best for most apps. Runs a standalone OAuth flow from your app — no dependency on the Copilot CLI or Azure CLI. Supports browser-based login via `/api/auth/*` routes. Tokens are cached to `~/.wingman/tokens/` and reused across restarts.
+- **`'inject'`:** Legacy mode. Reads the Copilot CLI's cached token (from a prior `copilot` session). Falls back to `az` CLI if no cached token exists. Does not support browser UI login.
 - **`'cli'`:** Only works when the SDK subprocess can open a browser (interactive terminal). Does NOT work when your app runs as a background service.
 - **`'none'`:** For MCP servers that don't require auth, or when you handle auth yourself via `mcpServers` config headers.
+
+## OAuth 2.0 Flow (Default)
+
+When `fabricAuth: 'oauth'` (the default), Wingman's built-in OAuth module handles the full token lifecycle:
+
+### Discovery
+
+On startup, Wingman probes each HTTP MCP server for **RFC 9470 resource metadata**:
+
+```
+GET https://api.fabric.microsoft.com/.well-known/oauth-authorization-server
+→ 200 OK
+{
+  "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+  "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+  "scopes_supported": ["https://analysis.windows.net/powerbi/api/.default"]
+}
+```
+
+If the server returns metadata, Wingman knows this server requires OAuth and records the discovered authorization server and scopes.
+
+### Browser Login
+
+When a token is needed (no cached token or cached token expired):
+
+```
+1. Wingman generates a PKCE code_verifier + code_challenge
+2. Starts an ephemeral HTTP listener on localhost:{random-port}
+3. Opens the user's default browser to the authorization endpoint:
+     https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+       ?client_id=<registered-app-id>
+       &response_type=code
+       &redirect_uri=http://localhost:{port}/
+       &scope=https://analysis.windows.net/powerbi/api/.default offline_access
+       &code_challenge=<S256-challenge>
+       &code_challenge_method=S256
+       &state=<random-state>
+4. User authenticates and consents
+5. Browser redirects to http://localhost:{port}/?code=<auth-code>&state=<state>
+6. Wingman exchanges the auth code for tokens at the token endpoint
+7. Tokens are cached to ~/.wingman/tokens/{hash}.json
+8. Ephemeral listener shuts down
+```
+
+### Token Caching
+
+Tokens are persisted to `~/.wingman/tokens/{hash}.json` where `{hash}` is a SHA-256 of the server URL + scope combination.
+
+**File format:**
+
+```json
+{
+  "accessToken": "eyJ0eXAi...",
+  "refreshToken": "0.AAAA...",
+  "expiresAt": 1772946209,
+  "scope": "https://analysis.windows.net/powerbi/api/.default",
+  "serverUrl": "https://api.fabric.microsoft.com/v1/mcp/powerbi"
+}
+```
+
+**File permissions:** `0o600` (owner read/write only). Wingman enforces this on creation and logs a warning if permissions are more permissive on existing files.
+
+On subsequent requests, Wingman reads the cached token and checks `expiresAt` (with a 2-minute buffer). If expired but a `refreshToken` is present, it performs a silent token refresh without opening a browser.
+
+## Auth API Routes
+
+When `fabricAuth: 'oauth'`, Wingman's Express server exposes `/api/auth/*` endpoints that a browser UI can use to trigger and monitor OAuth login flows.
+
+### `GET /api/auth/status`
+
+Returns the authentication state of all configured HTTP MCP servers.
+
+```
+GET /api/auth/status
+
+→ 200 OK
+{
+  "servers": [
+    {
+      "serverUrl": "https://api.fabric.microsoft.com/v1/mcp/powerbi",
+      "name": "powerbi-remote",
+      "authenticated": true,
+      "expiresAt": 1772946209,
+      "scopes": ["https://analysis.windows.net/powerbi/api/.default"]
+    }
+  ]
+}
+```
+
+### `POST /api/auth/login`
+
+Initiates an OAuth login flow for a specific MCP server. Returns a URL the browser should open and a `state` token to poll for completion.
+
+```
+POST /api/auth/login
+Content-Type: application/json
+
+{ "serverUrl": "https://api.fabric.microsoft.com/v1/mcp/powerbi" }
+
+→ 200 OK
+{
+  "authUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=...&state=abc123",
+  "state": "abc123"
+}
+```
+
+The client should open `authUrl` in a new browser tab/window. The user completes login there, and the browser redirects to the ephemeral localhost callback.
+
+### `GET /api/auth/wait/:state`
+
+Long-polls until the OAuth flow identified by `:state` completes (or times out after 120 seconds).
+
+```
+GET /api/auth/wait/abc123
+
+→ 200 OK (after user completes login)
+{
+  "status": "authenticated",
+  "serverUrl": "https://api.fabric.microsoft.com/v1/mcp/powerbi",
+  "expiresAt": 1772946209
+}
+
+→ 408 Request Timeout (if login not completed within 120s)
+{
+  "status": "timeout"
+}
+```
+
+### `POST /api/auth/logout`
+
+Clears cached tokens for a specific server (or all servers if no `serverUrl` provided).
+
+```
+POST /api/auth/logout
+Content-Type: application/json
+
+{ "serverUrl": "https://api.fabric.microsoft.com/v1/mcp/powerbi" }
+
+→ 200 OK
+{ "status": "logged_out" }
+```
+
+### `GET /api/auth/pending`
+
+Returns a list of MCP server URLs that require authentication but don't have valid tokens.
+
+```
+GET /api/auth/pending
+
+→ 200 OK
+{
+  "pending": [
+    "https://api.fabric.microsoft.com/v1/mcp/powerbi"
+  ]
+}
+```
 
 ### Manual Auth Headers
 
@@ -205,7 +382,18 @@ If the Copilot CLI already caches tokens for your server (e.g., WorkIQ, Datavers
 
 ## Security Considerations
 
-- **Token scope:** Wingman only injects tokens for servers matching `*.fabric.microsoft.com` hostnames. URL parsing prevents token leakage to untrusted servers.
-- **Cache file access:** `~/.copilot/mcp-oauth-config/` contains bearer tokens. Protect this directory with appropriate filesystem permissions.
+### Token Storage
+
+- **Wingman tokens:** `~/.wingman/tokens/` contains bearer tokens. Files are created with `0o600` permissions (owner read/write only). Wingman logs a warning if existing token files have more permissive permissions.
+- **CLI token cache:** `~/.copilot/mcp-oauth-config/` contains bearer tokens from the Copilot CLI. Protect this directory with appropriate filesystem permissions.
 - **Token lifetime:** Cached tokens typically expire in 1 hour. Wingman applies a 2-minute buffer before considering a token expired.
 - **Negative caching:** If `az` CLI token acquisition fails, Wingman waits 60 seconds before retrying to avoid repeated timeouts.
+
+### OAuth Module Security
+
+- **HTTPS-only metadata URLs:** The RFC 9470 resource metadata probe (`/.well-known/oauth-authorization-server`) is only performed against HTTPS URLs. HTTP URLs are rejected to prevent downgrade attacks.
+- **SSRF prevention on `/api/auth/login`:** The `serverUrl` parameter is validated against the set of configured MCP servers. Requests for URLs not in the MCP server config are rejected with `400 Bad Request`. This prevents an attacker from using the auth endpoint to probe arbitrary internal URLs.
+- **Fetch timeouts:** All outbound HTTP requests during discovery and token exchange enforce a 10-second timeout to prevent hanging on unresponsive servers.
+- **PKCE enforcement:** The OAuth flow always uses S256 PKCE code challenges. The `code_verifier` is held in memory only and never persisted to disk.
+- **Ephemeral callback listener:** The localhost callback server binds to a random high port, accepts only the expected `state` parameter, and shuts down immediately after receiving the callback.
+- **Token scope:** Wingman only injects tokens for servers matching configured MCP server URLs. URL parsing prevents token leakage to untrusted servers.
