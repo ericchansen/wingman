@@ -309,17 +309,20 @@ export interface WingmanConfig {
   customAgents?: SDKCustomAgentConfig[];
   tools?: Tool[];
   /**
-   * How to authenticate to Fabric/Power BI remote MCP servers.
+   * How to authenticate to remote HTTP MCP servers (Fabric/Power BI, etc.).
    *
-   * - `'cli'` — (default) Don't inject tokens; let the CLI subprocess handle
-   *   auth via its own browser OAuth flow. This grants full DAX execution scope.
+   * - `'oauth'` — **(recommended)** Standalone OAuth 2.0 Authorization Code + PKCE.
+   *   Probes each HTTP server for auth requirements (RFC 9470), uses cached
+   *   tokens if available, exposes `/api/auth/*` routes so the user can sign
+   *   in from the web UI. Works without the Copilot CLI installed.
+   * - `'cli'` — Don't inject tokens; assume the Copilot CLI subprocess handles
+   *   auth via its own browser OAuth flow.
    * - `'inject'` — Acquire a Fabric token via `az account get-access-token`
-   *   and inject it as an Authorization header. Only grants metadata-level access
-   *   (schema/discover work, but DAX ExecuteQuery fails with "Unauthorized").
-   * - `'none'` — No auth injection and no CLI auth. Server must be public or
-   *   pre-authenticated.
+   *   and inject it as an Authorization header. Metadata-level access only
+   *   (DAX ExecuteQuery fails with "Unauthorized").
+   * - `'none'` — No auth injection. Servers must be public or pre-authenticated.
    */
-  fabricAuth?: 'cli' | 'inject' | 'none';
+  fabricAuth?: 'oauth' | 'cli' | 'inject' | 'none';
   ui?: WingmanUIConfig;
   server?: WingmanServerConfig;
   telemetry?: WingmanTelemetryConfig;

@@ -21,7 +21,7 @@ export const DEFAULT_CONFIG: Required<WingmanConfig> = {
   skillDirectories: [],
   customAgents: [],
   tools: [],
-  fabricAuth: 'inject',
+  fabricAuth: 'oauth',
   ui: {
     title: 'Wingman',
     theme: 'system',
