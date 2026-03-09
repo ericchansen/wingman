@@ -1,5 +1,13 @@
 # @wingmanjs/react
 
+## 1.0.0
+
+### Patch Changes
+
+- d8c62c5: Standalone OAuth auth for remote HTTP MCP servers (Power BI, Fabric). Apps work without Copilot CLI. Includes auth module, /api/auth/\* routes, smart server classification, session invalidation, timeout removal, and security hardening.
+- Updated dependencies [d8c62c5]
+  - @wingmanjs/core@0.2.0
+
 ## 0.1.2
 
 ### Patch Changes
