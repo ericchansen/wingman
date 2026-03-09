@@ -223,13 +223,11 @@ async function ensureCallbackServer(): Promise<string> {
         });
     });
 
-    // Listen on 127.0.0.1 but use http://localhost in redirect_uri.
-    // The CLI uses https://vscode.dev/redirect with 127.0.0.1 in the state param,
-    // but our direct OAuth flow needs http://localhost which Entra ID accepts
-    // for native public clients with dynamic ports (RFC 8252 §7.3).
-    // The CLI's config files show 127.0.0.1 because that's the vscode.dev relay
-    // destination, NOT the registered redirect_uri.
-    server.listen(0, '127.0.0.1', () => {
+    // Listen on localhost (not 127.0.0.1) so the server binds to whatever
+    // localhost resolves to — IPv4 or IPv6 — matching the redirect_uri.
+    // Entra ID accepts http://localhost with dynamic ports for native
+    // public clients (RFC 8252 §7.3).
+    server.listen(0, 'localhost', () => {
       const addr = server.address();
       if (!addr || typeof addr === 'string') {
         reject(new Error('Failed to start callback server'));

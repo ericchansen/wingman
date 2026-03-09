@@ -248,6 +248,10 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
         res.status(400).json({ error: 'serverUrl is required' });
         return;
       }
+      // If auth status not yet populated (discovery still in flight), run it now
+      if (getHttpServerAuthStatus().length === 0) {
+        await discoverWithDiagnostics(config.mcpServers, undefined, config.fabricAuth);
+      }
       // Validate serverUrl against discovered MCP servers to prevent SSRF
       const knownServers = getHttpServerAuthStatus();
       const isKnown = knownServers.some((s) => s.serverUrl === serverUrl);

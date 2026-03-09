@@ -12,6 +12,7 @@ export interface ChatSession {
 }
 
 function loadFromStorage(storageKey: string): ChatSession[] {
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(storageKey);
     return raw ? JSON.parse(raw) : [];
@@ -21,6 +22,7 @@ function loadFromStorage(storageKey: string): ChatSession[] {
 }
 
 function saveToStorage(sessions: ChatSession[], storageKey: string, maxSessions: number) {
+  if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(storageKey, JSON.stringify(sessions.slice(0, maxSessions)));
   } catch {
@@ -29,7 +31,7 @@ function saveToStorage(sessions: ChatSession[], storageKey: string, maxSessions:
 }
 
 function generateId(): string {
-  return crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 }
 
 function deriveTitle(text: string): string {

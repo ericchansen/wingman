@@ -16,7 +16,7 @@ import { useAutoScroll } from '../hooks/use-auto-scroll.js';
 // ---------------------------------------------------------------------------
 
 function generateId(): string {
-  return crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 }
 
 function formatToolName(name: string): string {
