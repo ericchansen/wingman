@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * Hook that auto-scrolls a container to the bottom as new content streams in.
@@ -11,12 +11,6 @@ import { useEffect, useRef, useCallback } from 'react';
  * @param deps - Reactive values that trigger a scroll check (e.g., messages, streaming content)
  * @param threshold - Pixels from bottom to consider "at bottom" (default: 80)
  * @returns ref to attach to the scroll container (or its wrapper)
- *
- * @example
- * ```tsx
- * const scrollRef = useAutoScroll([messages, streamingContent], 80);
- * return <ScrollArea ref={scrollRef}>...</ScrollArea>;
- * ```
  */
 export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
   deps: unknown[],
@@ -24,42 +18,51 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
 ) {
   const containerRef = useRef<T>(null);
   const isUserScrolledUp = useRef(false);
+  const scrollListenerRef = useRef<{ el: HTMLElement; handler: () => void } | null>(null);
 
   // Resolve the actual scrollable element (handles shadcn ScrollArea wrapper)
-  const getScrollEl = useCallback((): HTMLElement | null => {
+  function getScrollEl(): HTMLElement | null {
     const el = containerRef.current;
     if (!el) return null;
-    // shadcn ScrollArea wraps the viewport in [data-slot="scroll-area-viewport"]
     return el.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]') ?? el;
-  }, []);
+  }
 
-  // Track whether the user has scrolled away from the bottom
+  // Auto-scroll and attach/reattach scroll listener on every deps change
   useEffect(() => {
     const scrollEl = getScrollEl();
     if (!scrollEl) return;
 
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = scrollEl;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      isUserScrolledUp.current = distanceFromBottom > threshold;
-    };
+    // Attach scroll listener if not already on this element
+    if (scrollListenerRef.current?.el !== scrollEl) {
+      // Clean up old listener
+      if (scrollListenerRef.current) {
+        scrollListenerRef.current.el.removeEventListener('scroll', scrollListenerRef.current.handler);
+      }
+      const handler = () => {
+        const { scrollTop, scrollHeight, clientHeight } = scrollEl;
+        isUserScrolledUp.current = scrollHeight - scrollTop - clientHeight > threshold;
+      };
+      scrollEl.addEventListener('scroll', handler, { passive: true });
+      scrollListenerRef.current = { el: scrollEl, handler };
+    }
 
-    scrollEl.addEventListener('scroll', handleScroll, { passive: true });
-    return () => scrollEl.removeEventListener('scroll', handleScroll);
-  }, [getScrollEl, threshold]);
-
-  // Auto-scroll when deps change, unless user has scrolled up
-  useEffect(() => {
-    if (isUserScrolledUp.current) return;
-
-    const scrollEl = getScrollEl();
-    if (!scrollEl) return;
-
-    // Use requestAnimationFrame for scroll after DOM paint
-    requestAnimationFrame(() => {
-      scrollEl.scrollTop = scrollEl.scrollHeight;
-    });
+    // Scroll to bottom unless user scrolled up
+    if (!isUserScrolledUp.current) {
+      requestAnimationFrame(() => {
+        scrollEl.scrollTop = scrollEl.scrollHeight;
+      });
+    }
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollListenerRef.current) {
+        scrollListenerRef.current.el.removeEventListener('scroll', scrollListenerRef.current.handler);
+        scrollListenerRef.current = null;
+      }
+    };
+  }, []);
 
   return containerRef;
 }

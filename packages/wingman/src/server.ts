@@ -14,7 +14,7 @@ import { resolve } from 'node:path';
 import { WingmanClient } from './client.js';
 import type { WingmanConfig } from './types.js';
 import { resolveConfig } from './config.js';
-import { discoverWithDiagnostics, getHttpServerAuthStatus } from './mcp.js';
+import { discoverWithDiagnostics, getHttpServerAuthStatus, refreshAuthStatusForServer } from './mcp.js';
 import { initTelemetry, shutdownTelemetry } from './instrumentation.js';
 import {
   startAuthFlow,
@@ -223,6 +223,14 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
   // OAuth routes — standalone auth for remote HTTP MCP servers
   // -------------------------------------------------------------------------
 
+  // Run MCP discovery at startup so auth status is populated before the
+  // first chat message. This lets the UI show sign-in prompts immediately.
+  if (config.fabricAuth === 'oauth') {
+    discoverWithDiagnostics(config.mcpServers, undefined, config.fabricAuth)
+      .then(() => console.log('🔐 Auth status ready'))
+      .catch((err) => console.warn('⚠️ Startup discovery failed:', err instanceof Error ? err.message : String(err)));
+  }
+
   /** Auth status for HTTP MCP servers (token health, which need login). */
   app.get('/api/auth/status', (_req, res) => {
     res.json({ servers: getHttpServerAuthStatus() });
@@ -254,6 +262,8 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
   app.get('/api/auth/wait/:state', async (req, res) => {
     try {
       const token = await waitForCallback(req.params.state);
+      // Update auth status cache so /api/auth/status reflects the new token
+      await refreshAuthStatusForServer(token.serverUrl);
       // Invalidate cached sessions so the next message picks up the new token
       client.invalidateSessions();
       res.json({ status: 'authenticated', serverUrl: token.serverUrl, expiresAt: token.expiresAt });
@@ -273,6 +283,8 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
         return;
       }
       await oauthLogout(serverUrl);
+      // Update auth status cache
+      await refreshAuthStatusForServer(serverUrl);
       // Invalidate cached sessions so auth changes take effect
       client.invalidateSessions();
       res.json({ status: 'logged_out' });

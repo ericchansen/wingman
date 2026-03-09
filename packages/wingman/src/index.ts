@@ -14,6 +14,7 @@ export type {
   SessionInfo,
   AgentMode,
   ChatMessage,
+  MessageSegment,
   MCPStdioConfig,
   MCPHttpConfig,
   MCPServerConfig,
@@ -41,7 +42,7 @@ export { EventRouter } from './events.js';
 export type { EventCallbacks } from './events.js';
 
 // MCP
-export { discoverMCPServers, discoverWithDiagnostics, getHttpServerAuthStatus } from './mcp.js';
+export { discoverMCPServers, discoverWithDiagnostics, getHttpServerAuthStatus, refreshAuthStatusForServer } from './mcp.js';
 export type { DiscoveryResult } from './mcp.js';
 
 // Auth (OAuth 2.0 for HTTP MCP servers)
