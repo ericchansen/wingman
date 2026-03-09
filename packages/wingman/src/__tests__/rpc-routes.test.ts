@@ -70,6 +70,8 @@ vi.mock('../mcp.js', () => ({
     skillDirectories: [],
     diagnostics: ['🔌 MCP Servers Discovered:'],
   }),
+  getHttpServerAuthStatus: vi.fn().mockReturnValue([]),
+  refreshAuthStatusForServer: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ---------------------------------------------------------------------------

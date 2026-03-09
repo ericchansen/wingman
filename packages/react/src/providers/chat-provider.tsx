@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useReducer, useCallback, useRef, type ReactNode } from 'react';
-import type { ChatMessage, ToolExecution, UsageData, MessageSegment } from '@wingmanjs/core';
+import type { ChatMessage, ToolExecution, UsageData } from '@wingmanjs/core';
 import type { DebugEvent } from '../components/debug-panel.js';
 import { ThemeProvider, type WingmanTheme, type WingmanThemeColors } from './theme-provider.js';
 import { useAutoScroll } from '../hooks/use-auto-scroll.js';
@@ -261,26 +261,21 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const summary = extractToolSummary(action.result);
       const isError = action.isError === true;
       const completedStatus: ToolExecution['status'] = isError ? 'error' : 'complete';
+      const toolUpdate = { status: completedStatus, result: action.result, summary: summary || undefined, isError, completedAt: Date.now() };
       if (existing) {
-        tools.set(action.toolCallId, {
-          ...existing,
-          status: completedStatus,
-          result: summary || action.result,
-          isError,
-          completedAt: Date.now(),
-        });
+        tools.set(action.toolCallId, { ...existing, ...toolUpdate });
       }
       const msgs = [...state.messages];
       const last = msgs[msgs.length - 1];
       if (last?.role === 'assistant' && last.tools) {
         const updatedTools = last.tools.map((t) =>
           t.toolCallId === action.toolCallId
-            ? { ...t, status: completedStatus, result: summary || action.result, isError, completedAt: Date.now() }
+            ? { ...t, ...toolUpdate }
             : t,
         );
         const segments = (last.segments ?? []).map((s) =>
           s.type === 'tool' && s.tool.toolCallId === action.toolCallId
-            ? { ...s, tool: { ...s.tool, status: completedStatus, result: summary || action.result, isError, completedAt: Date.now() } }
+            ? { ...s, tool: { ...s.tool, ...toolUpdate } }
             : s,
         );
         msgs[msgs.length - 1] = { ...last, tools: updatedTools, segments };
@@ -555,6 +550,7 @@ export function ChatProvider({ children, apiUrl = '', theme, colors, className, 
       dispatch({ type: 'CLEAR_ERROR' });
       dispatch({ type: 'ADD_USER_MESSAGE', content: message });
       dispatch({ type: 'START_STREAMING' });
+      debugBufferRef.current = [];
 
       try {
         const response = await fetchWithRetry(

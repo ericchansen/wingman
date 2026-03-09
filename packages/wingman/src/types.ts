@@ -184,6 +184,8 @@ export interface ToolExecution {
   mcpServerName?: string;
   /** Tool name as registered in the MCP server. */
   mcpToolName?: string;
+  /** One-line summary derived from the full result (for compact UI display). */
+  summary?: string;
   /** Progress message during execution. */
   progress?: string;
   startedAt: number;
@@ -211,7 +213,7 @@ export type MessageSegment =
   | { type: 'content'; id: string; content: string }
   | { type: 'skill'; id: string; name: string; pluginName?: string; path?: string }
   | { type: 'subagent'; id: string; toolCallId: string; name: string;
-      displayName: string; description: string;
+      displayName?: string; description?: string;
       status: 'running' | 'complete' | 'failed'; error?: string }
   | { type: 'intent'; id: string; intent: string }
   | { type: 'info'; id: string; infoType: string; message: string };

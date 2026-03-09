@@ -225,10 +225,14 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
 
   // Run MCP discovery at startup so auth status is populated before the
   // first chat message. This lets the UI show sign-in prompts immediately.
+  // Only run if no prior discovery has populated auth status (e.g. startServer()
+  // calls buildMCPServers() which runs discovery with auth injection already).
   if (config.fabricAuth === 'oauth') {
-    discoverWithDiagnostics(config.mcpServers, undefined, config.fabricAuth)
-      .then(() => console.log('🔐 Auth status ready'))
-      .catch((err) => console.warn('⚠️ Startup discovery failed:', err instanceof Error ? err.message : String(err)));
+    if (getHttpServerAuthStatus().length === 0) {
+      discoverWithDiagnostics(config.mcpServers, undefined, config.fabricAuth)
+        .then(() => console.log('🔐 Auth status ready'))
+        .catch((err) => console.warn('⚠️ Startup discovery failed:', err instanceof Error ? err.message : String(err)));
+    }
   }
 
   /** Auth status for HTTP MCP servers (token health, which need login). */
