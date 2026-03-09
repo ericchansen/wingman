@@ -1,5 +1,16 @@
 # @wingmanjs/react
 
+## 1.1.0
+
+### Minor Changes
+
+- 97c9584: Add MessageSegment types to core. Upgrade ChatProvider with all 17 SSE event types, ordered segment model, fetchWithRetry, configurable toolDisplayNames, debug events. Add useAuthStatus, useChatHistory, useIsMobile hooks.
+
+### Patch Changes
+
+- Updated dependencies [97c9584]
+  - @wingmanjs/core@0.2.1
+
 ## 1.0.0
 
 ### Patch Changes
