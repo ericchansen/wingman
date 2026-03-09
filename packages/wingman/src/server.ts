@@ -14,8 +14,15 @@ import { resolve } from 'node:path';
 import { WingmanClient } from './client.js';
 import type { WingmanConfig } from './types.js';
 import { resolveConfig } from './config.js';
-import { discoverWithDiagnostics } from './mcp.js';
+import { discoverWithDiagnostics, getHttpServerAuthStatus } from './mcp.js';
 import { initTelemetry, shutdownTelemetry } from './instrumentation.js';
+import {
+  startAuthFlow,
+  waitForCallback,
+  logout as oauthLogout,
+  getPendingFlows,
+  shutdownCallbackServer,
+} from './auth/index.js';
 
 import type { Application, Request, Response } from 'express';
 import type { Server } from 'node:http';
@@ -212,6 +219,64 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
     }
   });
 
+  // -------------------------------------------------------------------------
+  // OAuth routes — standalone auth for remote HTTP MCP servers
+  // -------------------------------------------------------------------------
+
+  /** Auth status for HTTP MCP servers (token health, which need login). */
+  app.get('/api/auth/status', (_req, res) => {
+    res.json({ servers: getHttpServerAuthStatus() });
+  });
+
+  /** Start OAuth flow for a remote MCP server. Returns the auth URL. */
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const { serverUrl } = req.body as { serverUrl?: string };
+      if (!serverUrl) {
+        res.status(400).json({ error: 'serverUrl is required' });
+        return;
+      }
+      const { authUrl, state } = await startAuthFlow(serverUrl);
+      res.json({ authUrl, state });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /** Wait for an in-progress OAuth flow to complete. */
+  app.get('/api/auth/wait/:state', async (req, res) => {
+    try {
+      const token = await waitForCallback(req.params.state);
+      // Invalidate cached sessions so the next message picks up the new token
+      client.invalidateSessions();
+      res.json({ status: 'authenticated', serverUrl: token.serverUrl, expiresAt: token.expiresAt });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /** Logout — remove cached token for a server. */
+  app.post('/api/auth/logout', async (req, res) => {
+    try {
+      const { serverUrl } = req.body as { serverUrl?: string };
+      if (!serverUrl) {
+        res.status(400).json({ error: 'serverUrl is required' });
+        return;
+      }
+      await oauthLogout(serverUrl);
+      // Invalidate cached sessions so auth changes take effect
+      client.invalidateSessions();
+      res.json({ status: 'logged_out' });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /** Check for pending OAuth flows. */
+  app.get('/api/auth/pending', (_req, res) => {
+    res.json({ pending: getPendingFlows() });
+  });
+
   // Chat SSE endpoint
   app.post('/api/chat', async (req, res) => {
     const { message, sessionId } = req.body as {
@@ -255,16 +320,8 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
-    // Request timeout: must exceed SDK's 300s so SDK error fires first
-    const DEFAULT_TIMEOUT = 330_000;
-    const parsed = parseInt(process.env.REQUEST_TIMEOUT ?? '', 10);
-    const REQUEST_TIMEOUT = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT;
-    const timeout = setTimeout(() => {
-      if (!closed) {
-        send('error', { message: 'Request timeout exceeded' });
-        res.end();
-      }
-    }, REQUEST_TIMEOUT);
+    // No server-side request timeout — complex skills can run 10+ minutes.
+    // Client disconnection (res.on('close')) handles cleanup.
 
     // Keepalive pings to prevent browser/proxy timeout
     const keepalive = setInterval(() => {
@@ -278,7 +335,6 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
     res.on('close', () => {
       closed = true;
       clearInterval(keepalive);
-      clearTimeout(timeout);
     });
 
     // Send initial heartbeat
@@ -323,7 +379,17 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
           },
           onToolComplete: (toolCallId, toolName, result) => {
             activeTools.delete(toolCallId);
-            send('tool_complete', { toolCallId, toolName, result });
+            // Detect error results heuristically (MCP servers return errors as text)
+            const isError = typeof result === 'string' && (
+              result.startsWith('Error:') ||
+              result.startsWith('error:') ||
+              result.includes('Unauthorized') ||
+              result.includes('401') ||
+              result.includes('403 Forbidden') ||
+              result.includes('authentication failed') ||
+              result.includes('token expired')
+            );
+            send('tool_complete', { toolCallId, toolName, result, isError });
           },
           onToolProgress: (toolCallId, message) =>
             send('tool_progress', { toolCallId, message }),
@@ -360,7 +426,6 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
       }
     } finally {
       clearInterval(keepalive);
-      clearTimeout(timeout);
     }
   });
 
@@ -399,6 +464,7 @@ export async function startServer(options: CreateServerOptions = {}): Promise<Ru
   // Graceful shutdown
   const shutdown = async () => {
     console.log('\nShutting down...');
+    shutdownCallbackServer();
     server.close();
     await client.stop();
     await shutdownTelemetry();

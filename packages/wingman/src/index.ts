@@ -41,8 +41,20 @@ export { EventRouter } from './events.js';
 export type { EventCallbacks } from './events.js';
 
 // MCP
-export { discoverMCPServers, discoverWithDiagnostics } from './mcp.js';
+export { discoverMCPServers, discoverWithDiagnostics, getHttpServerAuthStatus } from './mcp.js';
 export type { DiscoveryResult } from './mcp.js';
+
+// Auth (OAuth 2.0 for HTTP MCP servers)
+export {
+  startAuthFlow,
+  waitForCallback,
+  getValidToken,
+  refreshToken,
+  logout,
+  getPendingFlows,
+  shutdownCallbackServer,
+} from './auth/index.js';
+export type { OAuthServerConfig, McpServerAuth, StoredToken } from './auth/index.js';
 
 // Server
 export { createServer, startServer } from './server.js';

@@ -55,9 +55,9 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
     const scrollEl = getScrollEl();
     if (!scrollEl) return;
 
-    // Use requestAnimationFrame for smooth scroll after DOM paint
+    // Use requestAnimationFrame for scroll after DOM paint
     requestAnimationFrame(() => {
-      scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
+      scrollEl.scrollTop = scrollEl.scrollHeight;
     });
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { trace, SpanStatusCode, context, type Span } from '@opentelemetry/api';
 import type { MCPServerConfig } from './types.js';
+import { getValidToken, discoverAuthRequirements, type McpServerAuth } from './auth/index.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -213,6 +214,14 @@ let _fabricToken: { token: string; expiresOn: Date } | null = null;
 let _fabricTokenFailedAt: number | null = null;
 const NEGATIVE_CACHE_TTL_MS = 60_000; // 60 seconds
 
+/** Track which HTTP servers need auth so the server layer can expose login routes. */
+let _lastAuthStatus: McpServerAuth[] = [];
+
+/** Get the auth status from the most recent discovery run. */
+export function getHttpServerAuthStatus(): McpServerAuth[] {
+  return _lastAuthStatus;
+}
+
 /**
  * Try to read a Power BI token from the Copilot CLI's OAuth cache.
  *
@@ -336,6 +345,78 @@ async function injectAuthHeaders(servers: Record<string, MCPServerConfig>): Prom
   }
 }
 
+/**
+ * OAuth-based auth injection for HTTP MCP servers.
+ *
+ * For each HTTP server:
+ * 1. Check token cache — if valid, inject and move on
+ * 2. If no token, probe the server (RFC 9470) to discover if OAuth is required
+ * 3. If the server returns 401 + resource_metadata → mark "needs_auth" with oauthConfig
+ * 4. If the server does NOT require OAuth → mark "no_auth_required"
+ *
+ * This prevents false positives for servers like context7 or microsoft-learn
+ * that use API keys or are public.
+ */
+async function injectOAuthHeaders(
+  servers: Record<string, MCPServerConfig>,
+  sources: Map<string, string>,
+): Promise<void> {
+  const authStatus: McpServerAuth[] = [];
+
+  for (const [name, config] of Object.entries(servers)) {
+    if (config.type !== 'http' || !('url' in config) || typeof config.url !== 'string') {
+      continue;
+    }
+
+    try {
+      // Step 1: Check if we already have a valid cached token
+      const token = await getValidToken(config.url);
+      if (token) {
+        config.headers = { ...config.headers, Authorization: `Bearer ${token.accessToken}` };
+        authStatus.push({
+          serverUrl: config.url,
+          serverName: name,
+          status: 'authenticated',
+          expiresAt: token.expiresAt,
+        });
+        console.log(`  🔑 ${name} — authenticated (token cached)`);
+        continue;
+      }
+
+      // Step 2: No cached token — probe the server to see if it requires OAuth
+      const oauthConfig = await discoverAuthRequirements(config.url);
+      if (oauthConfig) {
+        // Server requires OAuth and we don't have a token
+        authStatus.push({
+          serverUrl: config.url,
+          serverName: name,
+          status: 'needs_auth',
+          oauthConfig,
+        });
+        console.log(`  🔓 ${name} — needs sign-in (OAuth required)`);
+      } else {
+        // Server does NOT require OAuth (no 401, or no resource_metadata)
+        authStatus.push({
+          serverUrl: config.url,
+          serverName: name,
+          status: 'no_auth_required',
+        });
+        console.log(`  ✅ ${name} — no OAuth required`);
+      }
+    } catch (err) {
+      authStatus.push({
+        serverUrl: config.url,
+        serverName: name,
+        status: 'error',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      console.warn(`  ⚠️ ${name} — auth check error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  _lastAuthStatus = authStatus;
+}
+
 // ---------------------------------------------------------------------------
 // Server config validation
 // ---------------------------------------------------------------------------
@@ -398,7 +479,7 @@ function validateServers(
  */
 export async function discoverMCPServers(
   userOverrides?: Record<string, MCPServerConfig>,
-  fabricAuth: 'cli' | 'inject' | 'none' = 'cli',
+  fabricAuth: 'oauth' | 'cli' | 'inject' | 'none' = 'oauth',
 ): Promise<Record<string, MCPServerConfig>> {
   const result: Record<string, MCPServerConfig> = {};
 
@@ -423,6 +504,8 @@ export async function discoverMCPServers(
   // Auth injection: add bearer tokens for HTTP servers that need them
   if (fabricAuth === 'inject') {
     await injectAuthHeaders(result);
+  } else if (fabricAuth === 'oauth') {
+    await injectOAuthHeaders(result, new Map());
   }
 
   // Validate — skip malformed entries
@@ -436,7 +519,7 @@ export async function discoverMCPServers(
 export async function discoverWithDiagnostics(
   userOverrides?: Record<string, MCPServerConfig>,
   projectRoot?: string,
-  fabricAuth: 'cli' | 'inject' | 'none' = 'cli',
+  fabricAuth: 'oauth' | 'cli' | 'inject' | 'none' = 'oauth',
 ): Promise<DiscoveryResult> {
   const tracer = trace.getTracer(MCP_TRACER);
   const discoverySpan = tracer.startSpan('mcp.discovery', {
@@ -514,6 +597,8 @@ export async function discoverWithDiagnostics(
     // Auth injection: add bearer tokens for HTTP servers that need them
     if (fabricAuth === 'inject') {
       await injectAuthHeaders(servers);
+    } else if (fabricAuth === 'oauth') {
+      await injectOAuthHeaders(servers, sources);
     }
 
     // Validate — skip malformed entries, log warnings

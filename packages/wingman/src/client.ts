@@ -82,6 +82,7 @@ export class WingmanClient {
     const sessionConfig = {
       model: this.config.model,
       streaming: true,
+      reasoningEffort: this.config.reasoningEffort,
       systemMessage: { content: this.config.systemPrompt },
       mcpServers,
       skillDirectories: this.config.skillDirectories,
@@ -154,7 +155,8 @@ export class WingmanClient {
       cached.unsubscribe = unsubscribe;
     }
 
-    const timeout = callbacks.timeout ?? 300_000;
+    // No practical timeout — skills like ACR reconciliation can run 10+ minutes
+    const timeout = callbacks.timeout ?? 30 * 60_000; // 30 minutes
 
     try {
       await session.sendAndWait({ prompt: message }, timeout);
@@ -197,6 +199,24 @@ export class WingmanClient {
       this.client = null;
     }
     sessionCache.clear();
+  }
+
+  /**
+   * Invalidate all cached sessions so the next getSession() call triggers
+   * fresh MCP discovery with updated auth headers.
+   *
+   * Call this after auth changes (login/logout) to ensure new sessions
+   * pick up the latest tokens.
+   */
+  invalidateSessions() {
+    for (const [, cached] of sessionCache) {
+      if (cached.unsubscribe) {
+        cached.unsubscribe();
+        cached.unsubscribe = null;
+      }
+    }
+    sessionCache.clear();
+    console.log('🔄 Session cache cleared — next message will re-discover MCP servers');
   }
 
   /** Get the resolved configuration. */
