@@ -236,6 +236,13 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
         res.status(400).json({ error: 'serverUrl is required' });
         return;
       }
+      // Validate serverUrl against discovered MCP servers to prevent SSRF
+      const knownServers = getHttpServerAuthStatus();
+      const isKnown = knownServers.some((s) => s.serverUrl === serverUrl);
+      if (!isKnown) {
+        res.status(403).json({ error: 'serverUrl is not a discovered MCP server' });
+        return;
+      }
       const { authUrl, state } = await startAuthFlow(serverUrl);
       res.json({ authUrl, state });
     } catch (err) {
@@ -251,7 +258,9 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
       client.invalidateSessions();
       res.json({ status: 'authenticated', serverUrl: token.serverUrl, expiresAt: token.expiresAt });
     } catch (err) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      const message = err instanceof Error ? err.message : String(err);
+      const status = /no pending oauth flow/i.test(message) ? 404 : 500;
+      res.status(status).json({ error: message });
     }
   });
 

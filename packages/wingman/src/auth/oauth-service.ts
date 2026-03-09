@@ -80,10 +80,16 @@ const flowPromises = new Map<string, Promise<StoredToken>>();
 // ---------------------------------------------------------------------------
 
 export async function discoverAuthRequirements(serverUrl: string): Promise<OAuthServerConfig | null> {
+  const PROBE_TIMEOUT = 10_000; // 10s timeout for all discovery fetches
+
   // Step 1: Hit the server without auth
   let resourceMetadataUrl: string;
   try {
-    const response = await fetch(serverUrl, { method: 'GET', redirect: 'manual' });
+    const response = await fetch(serverUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(PROBE_TIMEOUT),
+    });
     if (response.status !== 401) return null;
 
     const wwwAuth = response.headers.get('www-authenticate') ?? '';
@@ -93,6 +99,18 @@ export async function discoverAuthRequirements(serverUrl: string): Promise<OAuth
       return null;
     }
     resourceMetadataUrl = match[1];
+
+    // Validate metadata URL — must be HTTPS to prevent SSRF
+    try {
+      const metaUrl = new URL(resourceMetadataUrl);
+      if (metaUrl.protocol !== 'https:') {
+        console.warn(`[wingman:oauth] Rejecting non-HTTPS resource_metadata URL: ${resourceMetadataUrl}`);
+        return null;
+      }
+    } catch {
+      console.warn(`[wingman:oauth] Invalid resource_metadata URL: ${resourceMetadataUrl}`);
+      return null;
+    }
   } catch (err) {
     console.warn(`[wingman:oauth] Failed to probe ${serverUrl}:`, err instanceof Error ? err.message : String(err));
     return null;
@@ -101,7 +119,7 @@ export async function discoverAuthRequirements(serverUrl: string): Promise<OAuth
   // Step 2: Fetch resource metadata (RFC 9470)
   let resourceMeta: ResourceMetadata;
   try {
-    const res = await fetch(resourceMetadataUrl);
+    const res = await fetch(resourceMetadataUrl, { signal: AbortSignal.timeout(PROBE_TIMEOUT) });
     if (!res.ok) return null;
     resourceMeta = await res.json() as ResourceMetadata;
   } catch (err) {
@@ -115,7 +133,7 @@ export async function discoverAuthRequirements(serverUrl: string): Promise<OAuth
   const authServerUrl = resourceMeta.authorization_servers[0];
   let authMeta: AuthServerMetadata;
   try {
-    const res = await fetch(`${authServerUrl}/.well-known/openid-configuration`);
+    const res = await fetch(`${authServerUrl}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(PROBE_TIMEOUT) });
     if (!res.ok) return null;
     authMeta = await res.json() as AuthServerMetadata;
   } catch (err) {
@@ -417,12 +435,16 @@ export function shutdownCallbackServer(): void {
 // HTML response for the browser callback tab
 // ---------------------------------------------------------------------------
 
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function resultHtml(success: boolean, detail: string): string {
   const icon = success ? '✅' : '❌';
   const title = success ? "You're signed in!" : 'Authentication Failed';
   const sub = success
     ? 'You can close this tab and return to your app.'
-    : detail;
+    : escapeHtml(detail);
   const color = success ? '#3fb950' : '#f85149';
   return `<!DOCTYPE html>
 <html><head><title>${title}</title>

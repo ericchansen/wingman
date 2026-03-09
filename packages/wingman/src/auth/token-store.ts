@@ -34,7 +34,7 @@ function tokenPath(serverUrl: string): string {
 const memoryCache = new Map<string, StoredToken>();
 
 async function ensureDir(): Promise<void> {
-  await mkdir(TOKEN_DIR, { recursive: true });
+  await mkdir(TOKEN_DIR, { recursive: true, mode: 0o700 });
 }
 
 export async function loadToken(serverUrl: string): Promise<StoredToken | null> {
@@ -62,7 +62,7 @@ export async function loadToken(serverUrl: string): Promise<StoredToken | null> 
 export async function saveToken(token: StoredToken): Promise<void> {
   memoryCache.set(token.serverUrl, token);
   await ensureDir();
-  await writeFile(tokenPath(token.serverUrl), JSON.stringify(token, null, 2), 'utf-8');
+  await writeFile(tokenPath(token.serverUrl), JSON.stringify(token, null, 2), { encoding: 'utf-8', mode: 0o600 });
 }
 
 export async function removeToken(serverUrl: string): Promise<void> {
