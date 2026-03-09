@@ -165,13 +165,12 @@ export async function discoverAuthRequirements(serverUrl: string): Promise<OAuth
 
 async function ensureCallbackServer(): Promise<string> {
   if (callbackServer?.listening) {
-    // Entra ID requires http://localhost (not 127.0.0.1) for dynamic port native apps
-    return `http://localhost:${callbackPort}/`;
+    return `http://127.0.0.1:${callbackPort}/`;
   }
 
   return new Promise((resolve, reject) => {
     const server = createHttpServer((req, res) => {
-      const url = new URL(req.url ?? '/', `http://localhost:${callbackPort}`);
+      const url = new URL(req.url ?? '/', `http://127.0.0.1:${callbackPort}`);
 
       // Only handle the root path (where Entra ID sends the callback)
       if (url.pathname !== '/') {
@@ -224,9 +223,9 @@ async function ensureCallbackServer(): Promise<string> {
         });
     });
 
-    // Listen on 127.0.0.1 (localhost resolves here), but use http://localhost in redirect_uri
-    // Entra ID treats localhost specially: dynamic ports are allowed for native public clients
-    // 127.0.0.1 is NOT equivalent — it requires explicit registration (RFC 8252 §7.3 + MS docs)
+    // Listen on 127.0.0.1 — the Copilot CLI app registration (aebc6443-...)
+    // has http://127.0.0.1 with dynamic ports configured as redirect URIs.
+    // Verified by inspecting ~/.copilot/mcp-oauth-config/*.json configs.
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address();
       if (!addr || typeof addr === 'string') {
@@ -235,8 +234,8 @@ async function ensureCallbackServer(): Promise<string> {
       }
       callbackPort = addr.port;
       callbackServer = server;
-      console.log(`[wingman:oauth] Callback server on http://localhost:${callbackPort}`);
-      resolve(`http://localhost:${callbackPort}/`);
+      console.log(`[wingman:oauth] Callback server on http://127.0.0.1:${callbackPort}`);
+      resolve(`http://127.0.0.1:${callbackPort}/`);
     });
     server.on('error', reject);
   });
