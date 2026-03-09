@@ -165,12 +165,12 @@ export async function discoverAuthRequirements(serverUrl: string): Promise<OAuth
 
 async function ensureCallbackServer(): Promise<string> {
   if (callbackServer?.listening) {
-    return `http://127.0.0.1:${callbackPort}/`;
+    return `http://localhost:${callbackPort}/`;
   }
 
   return new Promise((resolve, reject) => {
     const server = createHttpServer((req, res) => {
-      const url = new URL(req.url ?? '/', `http://127.0.0.1:${callbackPort}`);
+      const url = new URL(req.url ?? '/', `http://localhost:${callbackPort}`);
 
       // Only handle the root path (where Entra ID sends the callback)
       if (url.pathname !== '/') {
@@ -223,9 +223,12 @@ async function ensureCallbackServer(): Promise<string> {
         });
     });
 
-    // Listen on 127.0.0.1 — the Copilot CLI app registration (aebc6443-...)
-    // has http://127.0.0.1 with dynamic ports configured as redirect URIs.
-    // Verified by inspecting ~/.copilot/mcp-oauth-config/*.json configs.
+    // Listen on 127.0.0.1 but use http://localhost in redirect_uri.
+    // The CLI uses https://vscode.dev/redirect with 127.0.0.1 in the state param,
+    // but our direct OAuth flow needs http://localhost which Entra ID accepts
+    // for native public clients with dynamic ports (RFC 8252 §7.3).
+    // The CLI's config files show 127.0.0.1 because that's the vscode.dev relay
+    // destination, NOT the registered redirect_uri.
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address();
       if (!addr || typeof addr === 'string') {
@@ -234,8 +237,8 @@ async function ensureCallbackServer(): Promise<string> {
       }
       callbackPort = addr.port;
       callbackServer = server;
-      console.log(`[wingman:oauth] Callback server on http://127.0.0.1:${callbackPort}`);
-      resolve(`http://127.0.0.1:${callbackPort}/`);
+      console.log(`[wingman:oauth] Callback server on http://localhost:${callbackPort}`);
+      resolve(`http://localhost:${callbackPort}/`);
     });
     server.on('error', reject);
   });
@@ -446,7 +449,7 @@ function resultHtml(success: boolean, detail: string): string {
     : escapeHtml(detail);
   const color = success ? '#3fb950' : '#f85149';
   return `<!DOCTYPE html>
-<html><head><title>${title}</title>
+<html><head><meta charset="utf-8"><title>${title}</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     display: flex; align-items: center; justify-content: center; height: 100vh;

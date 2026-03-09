@@ -223,6 +223,21 @@ export function getHttpServerAuthStatus(): McpServerAuth[] {
 }
 
 /**
+ * Update auth status for a single server after login/logout.
+ * Called by the server after a successful OAuth flow completes.
+ */
+export async function refreshAuthStatusForServer(serverUrl: string): Promise<void> {
+  const token = await getValidToken(serverUrl);
+  _lastAuthStatus = _lastAuthStatus.map((s) => {
+    if (s.serverUrl !== serverUrl) return s;
+    if (token) {
+      return { ...s, status: 'authenticated' as const, expiresAt: token.expiresAt };
+    }
+    return { ...s, status: 'needs_auth' as const, expiresAt: undefined };
+  });
+}
+
+/**
  * Try to read a Power BI token from the Copilot CLI's OAuth cache.
  *
  * The CLI caches tokens at `~/.copilot/mcp-oauth-config/*.tokens.json`.

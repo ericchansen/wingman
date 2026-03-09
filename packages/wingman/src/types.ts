@@ -173,9 +173,19 @@ export interface UsageData {
 export interface ToolExecution {
   toolCallId: string;
   toolName: string;
+  /** Human-readable display name (e.g., "Loading Pipeline"). */
+  displayName?: string;
   arguments?: Record<string, unknown>;
   result?: string;
   status: 'running' | 'complete' | 'error';
+  /** Whether the result represents an error (auth failure, timeout, etc.). */
+  isError?: boolean;
+  /** MCP server that owns this tool. */
+  mcpServerName?: string;
+  /** Tool name as registered in the MCP server. */
+  mcpToolName?: string;
+  /** Progress message during execution. */
+  progress?: string;
   startedAt: number;
   completedAt?: number;
 }
@@ -192,6 +202,21 @@ export interface SessionInfo {
 export type AgentMode = 'interactive' | 'plan' | 'autopilot';
 
 // ---------------------------------------------------------------------------
+// Message Segments — ordered list preserving interleaving of thinking/tools/content
+// ---------------------------------------------------------------------------
+
+export type MessageSegment =
+  | { type: 'thinking'; id: string; content: string; reasoningId?: string }
+  | { type: 'tool'; id: string; tool: ToolExecution }
+  | { type: 'content'; id: string; content: string }
+  | { type: 'skill'; id: string; name: string; pluginName?: string; path?: string }
+  | { type: 'subagent'; id: string; toolCallId: string; name: string;
+      displayName: string; description: string;
+      status: 'running' | 'complete' | 'failed'; error?: string }
+  | { type: 'intent'; id: string; intent: string }
+  | { type: 'info'; id: string; infoType: string; message: string };
+
+// ---------------------------------------------------------------------------
 // Chat Message Types
 // ---------------------------------------------------------------------------
 
@@ -206,6 +231,8 @@ export interface ChatMessage {
   reasoning?: string;
   /** Token usage for this turn. */
   usage?: UsageData;
+  /** Ordered segments preserving interleaving of thinking, tools, and content. */
+  segments?: MessageSegment[];
 }
 
 // ---------------------------------------------------------------------------
