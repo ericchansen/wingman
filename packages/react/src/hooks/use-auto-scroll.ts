@@ -27,12 +27,11 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
     return el.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]') ?? el;
   }
 
-  // Auto-scroll and attach/reattach scroll listener on every deps change
+  // Attach/reattach scroll listener when threshold changes or element swaps
   useEffect(() => {
     const scrollEl = getScrollEl();
     if (!scrollEl) return;
 
-    // Attach scroll listener if not already on this element
     if (scrollListenerRef.current?.el !== scrollEl) {
       // Clean up old listener
       if (scrollListenerRef.current) {
@@ -45,8 +44,13 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
       scrollEl.addEventListener('scroll', handler, { passive: true });
       scrollListenerRef.current = { el: scrollEl, handler };
     }
+  }, [threshold]);
 
-    // Scroll to bottom unless user scrolled up
+  // Auto-scroll on every deps change
+  useEffect(() => {
+    const scrollEl = getScrollEl();
+    if (!scrollEl) return;
+
     if (!isUserScrolledUp.current) {
       requestAnimationFrame(() => {
         scrollEl.scrollTop = scrollEl.scrollHeight;

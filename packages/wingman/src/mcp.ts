@@ -230,6 +230,8 @@ export async function refreshAuthStatusForServer(serverUrl: string): Promise<voi
   const token = await getValidToken(serverUrl);
   _lastAuthStatus = _lastAuthStatus.map((s) => {
     if (s.serverUrl !== serverUrl) return s;
+    // Don't change status of servers that don't need OAuth
+    if (s.status === 'no_auth_required') return s;
     if (token) {
       return { ...s, status: 'authenticated' as const, expiresAt: token.expiresAt };
     }
