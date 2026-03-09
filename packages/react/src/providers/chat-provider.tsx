@@ -545,7 +545,8 @@ export function ChatProvider({ children, apiUrl = '', theme, colors, className, 
 
       // Abort any in-flight request
       abortRef.current?.abort();
-      abortRef.current = new AbortController();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
       dispatch({ type: 'CLEAR_ERROR' });
       dispatch({ type: 'ADD_USER_MESSAGE', content: message });
@@ -562,7 +563,7 @@ export function ChatProvider({ children, apiUrl = '', theme, colors, className, 
               message,
               ...(state.sessionId ? { sessionId: state.sessionId } : {}),
             }),
-            signal: abortRef.current.signal,
+            signal: controller.signal,
           },
         );
 
@@ -613,13 +614,16 @@ export function ChatProvider({ children, apiUrl = '', theme, colors, className, 
           message: err instanceof Error ? err.message : String(err),
         });
       } finally {
-        // Always exit streaming state, even if the SSE stream ends
-        // without a 'done' event (network drop, server crash, etc.)
-        dispatch({ type: 'STOP_STREAMING' });
+        // Only stop streaming if this request is still the active one.
+        // A newer sendMessage() call aborts the old controller and replaces
+        // abortRef.current — so if they differ, a newer request owns the UI.
+        if (abortRef.current === controller) {
+          dispatch({ type: 'STOP_STREAMING' });
 
-        // Flush debug buffer to state after streaming completes
-        if (debugBufferRef.current.length > 0) {
-          dispatch({ type: 'ADD_DEBUG_EVENTS', events: [...debugBufferRef.current] });
+          // Flush debug buffer to state after streaming completes
+          if (debugBufferRef.current.length > 0) {
+            dispatch({ type: 'ADD_DEBUG_EVENTS', events: [...debugBufferRef.current] });
+          }
         }
       }
     },

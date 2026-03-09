@@ -23,6 +23,7 @@ import { createTracer } from './telemetry.js';
  *
  * Workaround: cache the original session object by ID and reuse it.
  */
+const MAX_CACHED_SESSIONS = 20;
 const sessionCache = new Map<string, {
   session: ReturnType<CopilotClient['createSession']> extends Promise<infer T> ? T : never;
   unsubscribe: (() => void) | null;
@@ -110,8 +111,16 @@ export class WingmanClient {
       session = await client.createSession(sessionConfig);
     }
 
-    // Cache the session
+    // Cache the session, evicting oldest entries if at capacity
     const sid = this.getSessionId(session);
+    if (sessionCache.size >= MAX_CACHED_SESSIONS && !sessionCache.has(sid)) {
+      const oldest = sessionCache.keys().next().value;
+      if (oldest) {
+        const entry = sessionCache.get(oldest);
+        entry?.unsubscribe?.();
+        sessionCache.delete(oldest);
+      }
+    }
     sessionCache.set(sid, { session, unsubscribe: null });
 
     return session;

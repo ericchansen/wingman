@@ -155,7 +155,10 @@ export class WingmanTracer {
       const span = toolSpans.get(toolCallId);
       if (!span) return;
 
-      const isError = result.startsWith('Error:') || result.startsWith('error:');
+      const isError = result.startsWith('Error:') || result.startsWith('error:') ||
+        result.includes('Unauthorized') || result.includes('401') ||
+        result.includes('403 Forbidden') || result.includes('authentication failed') ||
+        result.includes('token expired');
       if (isError) {
         const err = new Error(result.slice(0, 500));
         err.name = 'ToolError';
