@@ -320,7 +320,7 @@ async function acquireFabricToken(): Promise<string | null> {
     const { stdout } = await execFileAsync(
       'az',
       ['account', 'get-access-token', '--resource', 'https://analysis.windows.net/powerbi/api', '--output', 'json'],
-      { timeout: 10_000, shell: true },
+      { timeout: 10_000 },
     );
     const result = JSON.parse(stdout);
     if (result.accessToken) {
