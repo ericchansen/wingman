@@ -12,7 +12,7 @@ export type { ChatProviderProps, ChatState, ChatContextValue } from './providers
 export { useAutoScroll } from './hooks/use-auto-scroll.js';
 
 export { useAuthStatus } from './hooks/use-auth-status.js';
-export type { McpAuthEntry, UseAuthStatusReturn } from './hooks/use-auth-status.js';
+export type { McpAuthEntry, UseAuthStatusOptions, UseAuthStatusReturn } from './hooks/use-auth-status.js';
 
 export { useChatHistory, formatRelativeDate } from './hooks/use-chat-history.js';
 export type { ChatSession, UseChatHistoryReturn } from './hooks/use-chat-history.js';
