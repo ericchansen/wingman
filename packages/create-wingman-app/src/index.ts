@@ -5,11 +5,16 @@ import path from 'node:path';
 import prompts from 'prompts';
 import pc from 'picocolors';
 
-// Parse positional args properly — skip values that follow flags
+// Parse positional args — handle `--` end-of-options marker and skip flag values
 const positionalArgs: string[] = [];
 const rawArgs = process.argv.slice(2);
 for (let i = 0; i < rawArgs.length; i++) {
   const arg = rawArgs[i];
+  if (arg === '--') {
+    // Everything after `--` is positional (standard POSIX convention)
+    positionalArgs.push(...rawArgs.slice(i + 1));
+    break;
+  }
   if (arg.startsWith('-')) {
     // Skip the next arg if this flag expects a value (e.g. --template minimal)
     if (!arg.includes('=') && i + 1 < rawArgs.length && !rawArgs[i + 1].startsWith('-')) {
@@ -31,14 +36,20 @@ function isValidProjectName(name: string): boolean {
 }
 
 async function resolveLatestCoreVersion(): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
   try {
-    const res = await fetch('https://registry.npmjs.org/@wingmanjs/core/latest');
+    const res = await fetch('https://registry.npmjs.org/@wingmanjs/core/latest', {
+      signal: controller.signal,
+    });
     if (res.ok) {
       const data = (await res.json()) as { version?: string };
       if (data.version) return `^${data.version}`;
     }
   } catch {
-    // Fall back to bundled version on network failure
+    // Fall back to bundled version on network failure or timeout
+  } finally {
+    clearTimeout(timeout);
   }
   return '^0.2.1';
 }
