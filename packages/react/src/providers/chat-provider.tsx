@@ -8,6 +8,7 @@
 import React, { createContext, useContext, useReducer, useCallback, useRef, type ReactNode } from 'react';
 import type { ChatMessage, ToolExecution, UsageData } from '@wingmanjs/core';
 import type { DebugEvent } from '../components/debug-panel.js';
+import type { UseAuthStatusOptions } from '../hooks/use-auth-status.js';
 import { ThemeProvider, type WingmanTheme, type WingmanThemeColors } from './theme-provider.js';
 import { useAutoScroll } from '../hooks/use-auto-scroll.js';
 
@@ -514,6 +515,23 @@ export interface ChatContextValue {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 // ---------------------------------------------------------------------------
+// Auth options context — lets ChatProvider thread auth config to child hooks
+// ---------------------------------------------------------------------------
+
+const AuthOptionsContext = createContext<UseAuthStatusOptions | undefined>(undefined);
+
+/**
+ * Read auth options set on the nearest `<ChatProvider>`.
+ *
+ * Returns `undefined` if called outside a ChatProvider or if no `authOptions`
+ * were specified.  Designed for internal use by `useAuthStatus` and custom
+ * auth UI components.
+ */
+export function useAuthOptions(): UseAuthStatusOptions | undefined {
+  return useContext(AuthOptionsContext);
+}
+
+// ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
 
@@ -529,9 +547,24 @@ export interface ChatProviderProps {
   className?: string;
   /** Map of toolName → human-readable display name (e.g. "get_my_deals" → "Searching Deals"). */
   toolDisplayNames?: Record<string, string>;
+  /**
+   * Auth options passed to built-in auth UI and available to `useAuthStatus` via `useAuthOptions()`.
+   *
+   * Desktop / Electron apps should provide `openAuthUrl` here so that all built-in
+   * auth surfaces launch sign-in in the system browser automatically.
+   *
+   * @example
+   * ```tsx
+   * import { shell } from 'electron';
+   * <ChatProvider authOptions={{ openAuthUrl: (url) => shell.openExternal(url) }}>
+   *   ...
+   * </ChatProvider>
+   * ```
+   */
+  authOptions?: UseAuthStatusOptions;
 }
 
-export function ChatProvider({ children, apiUrl = '', theme, colors, className, toolDisplayNames }: ChatProviderProps) {
+export function ChatProvider({ children, apiUrl = '', theme, colors, className, toolDisplayNames, authOptions }: ChatProviderProps) {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const abortRef = useRef<AbortController | null>(null);
   const debugEnabledRef = useRef(false);
@@ -717,7 +750,9 @@ export function ChatProvider({ children, apiUrl = '', theme, colors, className, 
           scrollRef,
         }}
       >
-        {children}
+        <AuthOptionsContext.Provider value={authOptions}>
+          {children}
+        </AuthOptionsContext.Provider>
       </ChatContext.Provider>
     </ThemeProvider>
   );
