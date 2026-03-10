@@ -63,6 +63,96 @@ export function getDefaultHtml(ui: {
     }
     header .logo { font-size: 24px; }
     header h1 { font-size: 18px; font-weight: 600; }
+    header { justify-content: flex-start; }
+    .header-spacer { flex: 1; }
+
+    /* Auth settings button */
+    #auth-btn {
+      position: relative; background: none; border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 10px; cursor: pointer;
+      font-size: 16px; color: var(--text); display: flex; align-items: center; gap: 4px;
+    }
+    #auth-btn:hover { background: var(--bg-secondary); }
+    .auth-badge {
+      position: absolute; top: -4px; right: -4px;
+      background: #ef4444; color: #fff; font-size: 10px; font-weight: 700;
+      min-width: 16px; height: 16px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 4px; line-height: 1;
+    }
+    .auth-badge.hidden { display: none; }
+
+    /* Auth panel (slide-out) */
+    #auth-panel {
+      position: fixed; top: 0; right: -380px; width: 360px; height: 100%;
+      background: var(--bg); border-left: 1px solid var(--border);
+      box-shadow: -4px 0 20px rgba(0,0,0,.15); z-index: 100;
+      transition: right .25s ease; display: flex; flex-direction: column;
+    }
+    #auth-panel.open { right: 0; }
+    .panel-header {
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .panel-header h2 { font-size: 16px; font-weight: 600; }
+    .panel-close {
+      background: none; border: none; font-size: 20px; cursor: pointer;
+      color: var(--text-secondary); padding: 4px 8px; border-radius: 4px;
+    }
+    .panel-close:hover { background: var(--bg-secondary); }
+    .panel-body { flex: 1; overflow-y: auto; padding: 12px 20px; }
+    .panel-empty {
+      text-align: center; color: var(--text-secondary); padding: 40px 20px;
+      font-size: 14px;
+    }
+
+    /* Server cards */
+    .server-card {
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 14px; margin-bottom: 10px;
+    }
+    .server-card-header {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .status-dot.authenticated { background: #22c55e; }
+    .status-dot.needs_auth { background: #f59e0b; }
+    .status-dot.no_auth_required { background: #94a3b8; }
+    .status-dot.error { background: #ef4444; }
+    .server-name {
+      font-size: 14px; font-weight: 500; flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .server-status {
+      font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;
+    }
+    .server-url {
+      font-size: 11px; color: var(--text-secondary); font-family: var(--mono);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      margin-bottom: 8px;
+    }
+    .server-action {
+      display: inline-block; padding: 4px 12px; border-radius: 6px;
+      font-size: 12px; font-weight: 500; cursor: pointer; border: none;
+    }
+    .server-action.sign-in {
+      background: var(--primary); color: #fff;
+    }
+    .server-action.sign-in:hover { background: var(--primary-hover); }
+    .server-action.sign-out {
+      background: none; border: 1px solid var(--border); color: var(--text);
+    }
+    .server-action.sign-out:hover { background: var(--bg-secondary); }
+    .server-action:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* Overlay behind panel */
+    #auth-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.3);
+      z-index: 99; display: none;
+    }
+    #auth-overlay.open { display: block; }
 
     #messages {
       flex: 1; overflow-y: auto; padding: 24px;
@@ -146,7 +236,22 @@ export function getDefaultHtml(ui: {
   <header>
     <span class="logo">🦜</span>
     <h1>${title}</h1>
+    <div class="header-spacer"></div>
+    <button id="auth-btn" title="Connections">
+      🔌<span class="auth-badge hidden" id="auth-badge">0</span>
+    </button>
   </header>
+
+  <div id="auth-overlay"></div>
+  <div id="auth-panel">
+    <div class="panel-header">
+      <h2>Connections</h2>
+      <button class="panel-close" id="panel-close">&times;</button>
+    </div>
+    <div class="panel-body" id="panel-body">
+      <div class="panel-empty">Loading&hellip;</div>
+    </div>
+  </div>
 
   <div id="messages">
     <div class="welcome">
@@ -287,6 +392,149 @@ export function getDefaultHtml(ui: {
     });
 
     input.focus();
+
+    // ── Auth panel logic ──────────────────────────────────────────
+    const authBtn = document.getElementById('auth-btn');
+    const authBadge = document.getElementById('auth-badge');
+    const authPanel = document.getElementById('auth-panel');
+    const authOverlay = document.getElementById('auth-overlay');
+    const panelClose = document.getElementById('panel-close');
+    const panelBody = document.getElementById('panel-body');
+
+    function togglePanel(open) {
+      const isOpen = open ?? !authPanel.classList.contains('open');
+      authPanel.classList.toggle('open', isOpen);
+      authOverlay.classList.toggle('open', isOpen);
+      if (isOpen) fetchAuthStatus();
+    }
+    authBtn.addEventListener('click', () => togglePanel());
+    authOverlay.addEventListener('click', () => togglePanel(false));
+    panelClose.addEventListener('click', () => togglePanel(false));
+
+    function statusLabel(s) {
+      if (s === 'authenticated') return '\\u2705 Connected';
+      if (s === 'needs_auth') return '\\ud83d\\udd13 Sign-in required';
+      if (s === 'no_auth_required') return '\\u2014 No auth needed';
+      if (s === 'error') return '\\u274c Error';
+      return s;
+    }
+
+    function expiryLabel(ts) {
+      if (!ts) return '';
+      const mins = Math.round((ts * 1000 - Date.now()) / 60000);
+      if (mins < 1) return 'Expires soon';
+      if (mins < 60) return 'Expires in ' + mins + 'm';
+      return 'Expires in ' + Math.round(mins / 60) + 'h';
+    }
+
+    function renderServers(servers) {
+      if (!servers || servers.length === 0) {
+        panelBody.innerHTML = '<div class="panel-empty">No MCP servers configured.</div>';
+        authBadge.classList.add('hidden');
+        return;
+      }
+      const needsAuth = servers.filter(s => s.status === 'needs_auth').length;
+      if (needsAuth > 0) {
+        authBadge.textContent = needsAuth;
+        authBadge.classList.remove('hidden');
+      } else {
+        authBadge.classList.add('hidden');
+      }
+
+      panelBody.innerHTML = servers.map(s => {
+        const name = s.serverName.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+        const url = s.serverUrl.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+        const expiry = s.status === 'authenticated' ? expiryLabel(s.expiresAt) : '';
+        let action = '';
+        if (s.status === 'needs_auth') {
+          action = '<button class="server-action sign-in" data-url="' + s.serverUrl.replace(/"/g,'&quot;') + '">Sign in</button>';
+        } else if (s.status === 'authenticated') {
+          action = '<button class="server-action sign-out" data-url="' + s.serverUrl.replace(/"/g,'&quot;') + '">Sign out</button>';
+        }
+        const errorLine = s.error ? '<div class="server-status" style="color:#ef4444">' + s.error.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>' : '';
+        return '<div class="server-card">'
+          + '<div class="server-card-header">'
+          + '  <span class="status-dot ' + s.status + '"></span>'
+          + '  <span class="server-name">' + name + '</span>'
+          + '</div>'
+          + '<div class="server-status">' + statusLabel(s.status) + (expiry ? ' \\u00b7 ' + expiry : '') + '</div>'
+          + errorLine
+          + '<div class="server-url">' + url + '</div>'
+          + action
+          + '</div>';
+      }).join('');
+
+      panelBody.querySelectorAll('.sign-in').forEach(btn => {
+        btn.addEventListener('click', () => handleSignIn(btn.dataset.url, btn));
+      });
+      panelBody.querySelectorAll('.sign-out').forEach(btn => {
+        btn.addEventListener('click', () => handleSignOut(btn.dataset.url, btn));
+      });
+    }
+
+    async function fetchAuthStatus() {
+      try {
+        const res = await fetch('/api/auth/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        renderServers(data.servers || []);
+      } catch (_) {
+        panelBody.innerHTML = '<div class="panel-empty">Could not load auth status.</div>';
+      }
+    }
+
+    async function handleSignIn(serverUrl, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Opening\\u2026';
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serverUrl }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Login failed');
+        }
+        const { authUrl, state } = await res.json();
+        window.open(authUrl, '_blank', 'width=600,height=700');
+        btn.textContent = 'Waiting\\u2026';
+        const waitRes = await fetch('/api/auth/wait/' + encodeURIComponent(state));
+        if (!waitRes.ok) {
+          const err = await waitRes.json().catch(() => ({}));
+          throw new Error(err.error || 'Auth flow failed');
+        }
+        fetchAuthStatus();
+      } catch (err) {
+        btn.textContent = 'Sign in';
+        btn.disabled = false;
+        alert('Sign-in failed: ' + err.message);
+      }
+    }
+
+    async function handleSignOut(serverUrl, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Signing out\\u2026';
+      try {
+        const res = await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serverUrl }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Logout failed');
+        }
+        fetchAuthStatus();
+      } catch (err) {
+        btn.textContent = 'Sign out';
+        btn.disabled = false;
+        alert('Sign-out failed: ' + err.message);
+      }
+    }
+
+    // Fetch auth status on load to show badge
+    fetchAuthStatus();
   </script>
 </body>
 </html>`;
