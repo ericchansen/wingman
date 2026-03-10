@@ -223,12 +223,20 @@ Quick config:
 
 ```typescript
 export default defineConfig({
-  // 'inject' (default) — read CLI cache + az fallback, inject Authorization header
+  // 'oauth' (default) — standalone OAuth 2.0 PKCE, works without Copilot CLI
   // 'cli' — let the SDK subprocess handle auth (requires interactive terminal)
+  // 'inject' — use az CLI token (metadata-only access)
   // 'none' — no auth injection
-  fabricAuth: 'inject',
+  fabricAuth: 'oauth',
 });
 ```
+
+## Documentation
+
+- [Getting Started](docs/getting-started.md) — create and run your first Wingman app
+- [Configuration Reference](docs/configuration.md) — all config options with types, defaults, and examples
+- [MCP Authentication](docs/mcp-auth.md) — OAuth setup for Fabric/Power BI and other protected MCP servers
+- [hello-wingman example](examples/hello-wingman/) — minimal 20-line example
 
 ## Contributing
 
