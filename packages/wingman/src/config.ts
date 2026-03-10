@@ -50,12 +50,17 @@ export const DEFAULT_CONFIG: Required<WingmanConfig> = {
 
 /** Deep-merge user config with defaults. */
 export function resolveConfig(userConfig: WingmanConfig): Required<WingmanConfig> {
+  const envPort = process.env.PORT ? Number(process.env.PORT) : undefined;
   return {
     ...DEFAULT_CONFIG,
     ...userConfig,
     mcpServers: { ...DEFAULT_CONFIG.mcpServers, ...userConfig.mcpServers },
     ui: { ...DEFAULT_CONFIG.ui, ...userConfig.ui },
-    server: { ...DEFAULT_CONFIG.server, ...userConfig.server },
+    server: {
+      ...DEFAULT_CONFIG.server,
+      ...userConfig.server,
+      port: envPort ?? userConfig.server?.port ?? DEFAULT_CONFIG.server.port,
+    },
     telemetry: { ...DEFAULT_CONFIG.telemetry, ...userConfig.telemetry },
     fabricAuth: userConfig.fabricAuth ?? DEFAULT_CONFIG.fabricAuth,
   };

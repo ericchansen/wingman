@@ -478,7 +478,7 @@ export async function startServer(options: CreateServerOptions = {}): Promise<Ru
   await initTelemetry(preConfig.telemetry);
 
   const { app, client, config } = createServer(options);
-  const port = config.server.port;
+  const port = config.server.port ?? 3000;
 
   // Log MCP discovery
   const discovery = await discoverWithDiagnostics(config.mcpServers);
@@ -486,9 +486,24 @@ export async function startServer(options: CreateServerOptions = {}): Promise<Ru
     console.log(line);
   }
 
-  const server = app.listen(port, () => {
-    console.log(`\n🦜 Wingman running at http://localhost:${port}\n`);
-  });
+  const server = await new Promise<ReturnType<typeof app.listen>>(
+    (resolve, reject) => {
+      const s = app.listen(port, () => resolve(s));
+      s.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE') {
+          console.error(
+            `\n❌ Port ${port} is already in use.\n\n` +
+              `   Fix: either stop the other process, or change the port:\n\n` +
+              `     Option 1:  Change server.port in src/server.ts\n` +
+              `     Option 2:  PORT=${port + 1} npm run dev\n`,
+          );
+          process.exit(1);
+        }
+        reject(err);
+      });
+    },
+  );
+  console.log(`\n🦜 Wingman running at http://localhost:${port}\n`);
 
   // Graceful shutdown
   const shutdown = async () => {
