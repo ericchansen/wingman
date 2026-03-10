@@ -217,6 +217,9 @@ const NEGATIVE_CACHE_TTL_MS = 60_000; // 60 seconds
 /** Track which HTTP servers need auth so the server layer can expose login routes. */
 let _lastAuthStatus: McpServerAuth[] = [];
 
+/** Cache provider labels so authenticated entries retain their group after login. */
+const _providerCache = new Map<string, string>();
+
 /**
  * Derive a user-friendly provider label from an OAuth authorization endpoint.
  * Groups servers that share the same identity provider under one label.
@@ -415,6 +418,7 @@ async function injectOAuthHeaders(
           serverName: name,
           status: 'authenticated',
           expiresAt: token.expiresAt,
+          provider: _providerCache.get(config.url),
         });
         console.log(`  🔑 ${name} — authenticated (token cached)`);
         continue;
@@ -424,12 +428,14 @@ async function injectOAuthHeaders(
       const oauthConfig = await discoverAuthRequirements(config.url);
       if (oauthConfig) {
         // Server requires OAuth and we don't have a token
+        const provider = deriveProvider(oauthConfig.authorizationEndpoint);
+        if (provider) _providerCache.set(config.url, provider);
         authStatus.push({
           serverUrl: config.url,
           serverName: name,
           status: 'needs_auth',
           oauthConfig,
-          provider: deriveProvider(oauthConfig.authorizationEndpoint),
+          provider,
         });
         console.log(`  🔓 ${name} — needs sign-in (OAuth required)`);
       } else {

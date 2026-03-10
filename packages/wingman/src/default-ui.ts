@@ -500,7 +500,7 @@ export function getDefaultHtml(ui: {
       if (groups && Object.keys(groups).length > 1) {
         const html = [];
         for (const [provider, list] of Object.entries(groups)) {
-          const label = provider === '__ungrouped__' ? 'Other' : provider.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+          const label = provider === '__no_provider__' ? 'Other' : provider.replace(/&/g,'&amp;').replace(/</g,'&lt;');
           const groupNeeds = list.filter(s => s.status === 'needs_auth');
           html.push('<div class="auth-group">');
           html.push('<div class="auth-group-header">');
@@ -527,7 +527,7 @@ export function getDefaultHtml(ui: {
           btn.disabled = true;
           btn.textContent = 'Opening\\u2026';
           for (const url of urls) {
-            const serverBtn = panelBody.querySelector('.sign-in[data-url="' + url + '"]');
+            const serverBtn = Array.from(panelBody.querySelectorAll('.sign-in')).find(b => b.dataset.url === url);
             if (serverBtn) await handleSignIn(url, serverBtn);
           }
           btn.textContent = 'Sign in to all';
