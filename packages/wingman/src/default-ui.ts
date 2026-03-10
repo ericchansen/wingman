@@ -511,6 +511,7 @@ export function getDefaultHtml(ui: {
       btn.disabled = true;
       btn.textContent = 'Opening\\u2026';
       const ac = new AbortController();
+      let popup = null;
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
@@ -522,14 +523,17 @@ export function getDefaultHtml(ui: {
           throw new Error(err.error || 'Login failed');
         }
         const { authUrl, state } = await res.json();
-        const popup = window.open(authUrl, '_blank', 'width=600,height=700');
-        if (popup) popup.opener = null;
+        // Open about:blank first, null opener to prevent reverse-tabnabbing,
+        // then redirect — avoids a race where the target page could access window.opener
+        popup = window.open('about:blank', '_blank', 'width=600,height=700');
         if (!popup) {
           btn.textContent = 'Sign in';
           btn.disabled = false;
           showPanelError('Popup blocked \\u2014 allow popups and try again.');
           return;
         }
+        popup.opener = null;
+        popup.location.href = authUrl;
 
         // Show a clickable Cancel button instead of disabled Waiting
         btn.textContent = 'Cancel';
@@ -556,10 +560,12 @@ export function getDefaultHtml(ui: {
         }
       } catch (err) {
         if (err.name === 'AbortError') {
-          // User cancelled or closed popup — silent recovery
+          // User cancelled or closed popup — try to close popup and refresh status
+          try { popup && !popup.closed && popup.close(); } catch (_) { /* cross-origin */ }
           btn.textContent = 'Sign in';
           btn.disabled = false;
           btn.className = 'server-action sign-in';
+          fetchAuthStatus();
           return;
         }
         btn.textContent = 'Sign in';

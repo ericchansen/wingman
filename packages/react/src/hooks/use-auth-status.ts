@@ -49,6 +49,17 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
   const pendingLoginsRef = useRef(new Set<string>());
   const abortControllersRef = useRef(new Map<string, AbortController>());
 
+  // Abort any in-flight long-poll requests on unmount to avoid leaks
+  useEffect(() => {
+    return () => {
+      abortControllersRef.current.forEach((controller) => {
+        try { controller.abort(); } catch { /* ignore */ }
+      });
+      abortControllersRef.current.clear();
+      pendingLoginsRef.current.clear();
+    };
+  }, []);
+
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`${apiUrl}/api/auth/status`);
@@ -116,7 +127,13 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
       } else {
         // Fallback if window was blocked
         const fallback = window.open(authUrl, '_blank');
-        if (fallback) fallback.opener = null;
+        if (fallback) {
+          fallback.opener = null;
+        } else {
+          throw new Error(
+            'Authentication popup was blocked. Please allow popups for this site and try again.',
+          );
+        }
       }
 
       // Wait for callback, but abort if the auth window is closed.
@@ -153,7 +170,7 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
         if (windowPollTimer) clearInterval(windowPollTimer);
       }
     } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === 'AbortError') {
+      if (e instanceof Error && e.name === 'AbortError') {
         // User closed the auth window — not a real error
         console.info('[Auth] Login cancelled — auth window was closed');
       } else {
@@ -194,7 +211,19 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
    */
   const cancelLogin = useCallback((serverUrl: string) => {
     const ac = abortControllersRef.current.get(serverUrl);
-    if (ac) ac.abort();
+    if (ac) {
+      ac.abort();
+      abortControllersRef.current.delete(serverUrl);
+    }
+
+    // Clear pending state even if no AbortController exists yet
+    pendingLoginsRef.current.delete(serverUrl);
+    setState((prev) => {
+      if (!prev.pendingLogins.has(serverUrl)) return prev;
+      const nextPending = new Set(prev.pendingLogins);
+      nextPending.delete(serverUrl);
+      return { ...prev, pendingLogins: nextPending };
+    });
   }, []);
 
   const needsAuth = state.mcpAuth.some((s) => s.status === 'needs_auth');
