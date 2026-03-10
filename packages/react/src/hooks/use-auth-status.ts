@@ -226,10 +226,17 @@ export function useAuthStatus(
         // Set a timeout to auto-cancel if the flow is abandoned.
         const timeoutMs = externalAuthTimeoutMsRef.current ?? DEFAULT_EXTERNAL_AUTH_TIMEOUT_MS;
         if (timeoutMs > 0) {
+          // Clear any existing timer for this server (e.g. double-click race)
+          const prevTimer = externalTimeoutsRef.current.get(serverUrl);
+          if (prevTimer) clearTimeout(prevTimer);
+
           const timer = setTimeout(() => {
-            console.info(`[Auth] External auth timed out after ${timeoutMs / 1000}s for ${serverUrl}`);
-            abortController.abort();
-            externalTimeoutsRef.current.delete(serverUrl);
+            // Only act if this timer is still the current one for this server
+            if (externalTimeoutsRef.current.get(serverUrl) === timer) {
+              console.info(`[Auth] External auth timed out after ${timeoutMs / 1000}s for ${serverUrl}`);
+              abortController.abort();
+              externalTimeoutsRef.current.delete(serverUrl);
+            }
           }, timeoutMs);
           externalTimeoutsRef.current.set(serverUrl, timer);
         }

@@ -524,8 +524,8 @@ const AuthOptionsContext = createContext<UseAuthStatusOptions | undefined>(undef
  * Read auth options set on the nearest `<ChatProvider>`.
  *
  * Returns `undefined` if called outside a ChatProvider or if no `authOptions`
- * were specified.  Designed for internal use by `useAuthStatus` and custom
- * auth UI components.
+ * were specified.  Use this in custom auth UI components to retrieve
+ * provider-level config (e.g., `openAuthUrl`) and pass it to `useAuthStatus`.
  */
 export function useAuthOptions(): UseAuthStatusOptions | undefined {
   return useContext(AuthOptionsContext);
