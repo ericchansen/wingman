@@ -20,6 +20,9 @@ interface AuthState {
   pendingLogins: Set<string>;
 }
 
+/** Default timeout for external browser auth flows (5 minutes). */
+const DEFAULT_EXTERNAL_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+
 export interface UseAuthStatusOptions {
   /**
    * Custom function to open auth URLs.
@@ -36,6 +39,23 @@ export interface UseAuthStatusOptions {
    * ```
    */
   openAuthUrl?: (url: string) => void | Promise<void>;
+
+  /**
+   * Timeout in milliseconds for external browser auth flows (when `openAuthUrl` is provided).
+   *
+   * When auth is launched in an external browser (e.g., Electron `shell.openExternal`),
+   * there is no popup handle to detect if the user closed the browser. If the user
+   * abandons the flow, the login stays pending indefinitely.
+   *
+   * This timeout automatically cancels the pending login after the specified duration,
+   * preventing the UI from appearing stuck. `cancelLogin()` remains available as a
+   * manual override.
+   *
+   * Set to `0` to disable the timeout (not recommended).
+   *
+   * @default 300000 (5 minutes)
+   */
+  externalAuthTimeoutMs?: number;
 }
 
 export interface UseAuthStatusReturn {
@@ -78,8 +98,11 @@ export function useAuthStatus(
 
   const pendingLoginsRef = useRef(new Set<string>());
   const abortControllersRef = useRef(new Map<string, AbortController>());
+  const externalTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const openAuthUrlRef = useRef(options?.openAuthUrl);
   openAuthUrlRef.current = options?.openAuthUrl;
+  const externalAuthTimeoutMsRef = useRef(options?.externalAuthTimeoutMs);
+  externalAuthTimeoutMsRef.current = options?.externalAuthTimeoutMs;
 
   // Abort any in-flight long-poll requests on unmount to avoid leaks
   useEffect(() => {
@@ -88,6 +111,8 @@ export function useAuthStatus(
         try { controller.abort(); } catch { /* ignore */ }
       });
       abortControllersRef.current.clear();
+      externalTimeoutsRef.current.forEach((t) => clearTimeout(t));
+      externalTimeoutsRef.current.clear();
       pendingLoginsRef.current.clear();
     };
   }, []);
@@ -196,6 +221,18 @@ export function useAuthStatus(
             if (windowPollTimer) clearInterval(windowPollTimer);
           }
         }, 500);
+      } else if (opener) {
+        // External browser flow: no popup handle to detect close.
+        // Set a timeout to auto-cancel if the flow is abandoned.
+        const timeoutMs = externalAuthTimeoutMsRef.current ?? DEFAULT_EXTERNAL_AUTH_TIMEOUT_MS;
+        if (timeoutMs > 0) {
+          const timer = setTimeout(() => {
+            console.info(`[Auth] External auth timed out after ${timeoutMs / 1000}s for ${serverUrl}`);
+            abortController.abort();
+            externalTimeoutsRef.current.delete(serverUrl);
+          }, timeoutMs);
+          externalTimeoutsRef.current.set(serverUrl, timer);
+        }
       }
 
       try {
@@ -210,11 +247,17 @@ export function useAuthStatus(
         await fetchStatus();
       } finally {
         if (windowPollTimer) clearInterval(windowPollTimer);
+        // Clear external auth timeout on completion (success or failure)
+        const extTimer = externalTimeoutsRef.current.get(serverUrl);
+        if (extTimer) {
+          clearTimeout(extTimer);
+          externalTimeoutsRef.current.delete(serverUrl);
+        }
       }
     } catch (e: unknown) {
       if (e instanceof Error && e.name === 'AbortError') {
-        // User closed the auth window — not a real error
-        console.info('[Auth] Login cancelled — auth window was closed');
+        // User closed the auth window or external auth timed out
+        console.info('[Auth] Login cancelled — auth window was closed or flow timed out');
       } else {
         console.error('[Auth] Login failed:', e);
         setState((prev) => ({
@@ -256,6 +299,13 @@ export function useAuthStatus(
     if (ac) {
       ac.abort();
       abortControllersRef.current.delete(serverUrl);
+    }
+
+    // Clear external auth timeout if active
+    const extTimer = externalTimeoutsRef.current.get(serverUrl);
+    if (extTimer) {
+      clearTimeout(extTimer);
+      externalTimeoutsRef.current.delete(serverUrl);
     }
 
     // Clear pending state even if no AbortController exists yet

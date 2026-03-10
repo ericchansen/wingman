@@ -6,7 +6,7 @@
  */
 
 // Provider + hooks
-export { ChatProvider, useChat } from './providers/chat-provider.js';
+export { ChatProvider, useChat, useAuthOptions } from './providers/chat-provider.js';
 export type { ChatProviderProps, ChatState, ChatContextValue } from './providers/chat-provider.js';
 
 export { useAutoScroll } from './hooks/use-auto-scroll.js';
