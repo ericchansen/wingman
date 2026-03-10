@@ -1,5 +1,14 @@
 # hello-wingman
 
+## 0.1.7
+
+### Patch Changes
+
+- Updated dependencies [d91c9b3]
+- Updated dependencies [0d15188]
+- Updated dependencies [69f26e6]
+  - @wingmanjs/core@0.4.0
+
 ## 0.1.6
 
 ### Patch Changes

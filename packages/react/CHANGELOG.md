@@ -1,5 +1,31 @@
 # @wingmanjs/react
 
+## 3.0.0
+
+### Minor Changes
+
+- d91c9b3: feat(auth): group MCP servers by OAuth provider in connections panel
+
+  Servers requiring OAuth are now grouped by provider (e.g. "Microsoft", "Google", "GitHub") in the auth settings panel. Each group shows a "Sign in to all" button for batch authentication. The /api/auth/status endpoint returns both flat servers and grouped data.
+
+- b793222: feat(auth): add openAuthUrl option for desktop/Electron OAuth flows
+
+  The useAuthStatus hook now accepts an optional openAuthUrl function for launching OAuth URLs in the system browser instead of window.open(). Desktop/Electron apps can pass shell.openExternal to use the user's default browser profile for sign-in.
+
+### Patch Changes
+
+- 69f26e6: fix: clear pending auth state when OAuth window is closed or cancelled
+  - Add "Cancel" button in default UI during OAuth wait (replaces disabled "Waiting…")
+  - Handle Cross-Origin-Opener-Policy (COOP) that blocks popup.closed polling
+  - Add cancelLogin() to useAuthStatus hook for React apps
+  - Prevent reverse-tabnabbing without losing popup window reference
+  - Guard against re-entrant sign-in when Cancel button is clicked
+
+- Updated dependencies [d91c9b3]
+- Updated dependencies [0d15188]
+- Updated dependencies [69f26e6]
+  - @wingmanjs/core@0.4.0
+
 ## 2.0.0
 
 ### Patch Changes
