@@ -24,7 +24,7 @@ export const DEFAULT_CONFIG: Required<WingmanConfig> = {
   fabricAuth: 'oauth',
   ui: {
     title: 'Wingman',
-    theme: 'system',
+    theme: 'dark',
     logo: undefined,
     welcomeMessage: 'How can I help?',
     suggestions: [],
