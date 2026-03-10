@@ -20,6 +20,24 @@ interface AuthState {
   pendingLogins: Set<string>;
 }
 
+export interface UseAuthStatusOptions {
+  /**
+   * Custom function to open auth URLs.
+   *
+   * By default, the hook uses `window.open()` to launch a browser popup.
+   * Desktop / Electron apps should pass `shell.openExternal` (or a wrapper)
+   * so sign-in opens in the user's default system browser with their existing
+   * profile, saved passwords, and SSO session.
+   *
+   * @example
+   * ```ts
+   * import { shell } from 'electron';
+   * useAuthStatus(30_000, '', { openAuthUrl: (url) => shell.openExternal(url) });
+   * ```
+   */
+  openAuthUrl?: (url: string) => void | Promise<void>;
+}
+
 export interface UseAuthStatusReturn {
   mcpAuth: McpAuthEntry[];
   /** Servers grouped by provider (e.g., "Microsoft", "GitHub"). */
@@ -43,8 +61,13 @@ export interface UseAuthStatusReturn {
  *
  * @param pollIntervalMs - How often to poll for auth status (default: 30000)
  * @param apiUrl - Base URL for the API (default: '')
+ * @param options - Additional options (e.g. custom auth URL launcher for desktop apps)
  */
-export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStatusReturn {
+export function useAuthStatus(
+  pollIntervalMs = 30_000,
+  apiUrl = '',
+  options?: UseAuthStatusOptions,
+): UseAuthStatusReturn {
   const [state, setState] = useState<AuthState>({
     mcpAuth: [],
     groups: {},
@@ -55,6 +78,8 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
 
   const pendingLoginsRef = useRef(new Set<string>());
   const abortControllersRef = useRef(new Map<string, AbortController>());
+  const openAuthUrlRef = useRef(options?.openAuthUrl);
+  openAuthUrlRef.current = options?.openAuthUrl;
 
   // Abort any in-flight long-poll requests on unmount to avoid leaks
   useEffect(() => {
@@ -108,11 +133,15 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
       pendingLogins: new Set(pendingLoginsRef.current),
     }));
 
-    // Open a blank window immediately (synchronous with user gesture)
-    // to avoid popup blockers, then redirect once we have the auth URL.
-    // Avoid 'noopener' here so we retain a window reference for close detection.
-    const authWindow = window.open('about:blank', '_blank');
-    if (authWindow) authWindow.opener = null; // prevent reverse-tabnabbing
+    // Only pre-open a blank popup when using the default browser flow.
+    // Desktop apps with a custom opener skip this entirely.
+    // Read the ref at the last moment so hot-swapping the callback works.
+    let authWindow: Window | null = null;
+    if (!openAuthUrlRef.current) {
+      // Avoid 'noopener' here so we retain a window reference for close detection.
+      authWindow = window.open('about:blank', '_blank');
+      if (authWindow) authWindow.opener = null; // prevent reverse-tabnabbing
+    }
 
     try {
       // Request auth URL from backend
@@ -129,8 +158,13 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
 
       const { authUrl, state: flowState } = await res.json();
 
-      // Redirect the pre-opened window to the auth URL
-      if (authWindow) {
+      // Re-read the ref so we always use the latest callback
+      const opener = openAuthUrlRef.current;
+      if (opener) {
+        // Desktop/Electron: launch in system browser
+        await opener(authUrl);
+      } else if (authWindow) {
+        // Browser: redirect the pre-opened popup
         authWindow.location.href = authUrl;
       } else {
         // Fallback if window was blocked
