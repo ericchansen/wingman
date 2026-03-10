@@ -74,6 +74,9 @@ export class WingmanClient {
         cached.unsubscribe();
         cached.unsubscribe = null;
       }
+      // Refresh LRU position: delete + re-set moves entry to end of Map iteration order
+      sessionCache.delete(sessionId);
+      sessionCache.set(sessionId, cached);
       return cached.session;
     }
 
