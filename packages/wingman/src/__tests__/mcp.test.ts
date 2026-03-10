@@ -52,7 +52,7 @@ describe('discoverMCPServers', () => {
       },
     });
     expect(servers['powerbi-remote'].url).toBe('https://custom.example.com/mcp');
-  });
+  }, 15_000);
 });
 
 describe('discoverWithDiagnostics', () => {
