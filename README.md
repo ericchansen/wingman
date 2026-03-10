@@ -65,13 +65,11 @@ export default defineConfig({
 
 ### Create a new app
 
-> **Note:** `create-wingman-app` is not yet implemented. For now, clone the repo directly:
-
 ```bash
-git clone https://github.com/ericchansen/wingman.git
-cd wingman
-pnpm install
-pnpm dev
+npx create-wingman-app my-app
+cd my-app
+npm install
+npm run dev
 ```
 
 Open `http://localhost:3000` — you have a working chat.
@@ -103,8 +101,8 @@ export default defineConfig({
   // MCP servers (merged with auto-discovered servers)
   mcpServers: {},
 
-  // Custom tools
-  tools: ['./src/tools/*.ts'],
+  // Custom tools (Tool[] from @github/copilot-sdk)
+  tools: [],
 
   // UI
   ui: {
