@@ -1,5 +1,12 @@
 # @wingmanjs/react
 
+## 2.0.0
+
+### Patch Changes
+
+- Updated dependencies [c92a4b9]
+  - @wingmanjs/core@0.3.0
+
 ## 1.1.1
 
 ### Patch Changes

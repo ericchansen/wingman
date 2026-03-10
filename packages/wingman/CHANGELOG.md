@@ -1,5 +1,11 @@
 # @wingmanjs/core
 
+## 0.3.0
+
+### Minor Changes
+
+- c92a4b9: Add built-in chat UI served at `/` when no `staticDir` is configured. New apps created with `create-wingman-app` now show a working chat interface immediately. Also fixes `reasoningEffort` compatibility — models that don't support it are automatically retried without it, and SSE error events are now properly displayed in the UI.
+
 ## 0.2.2
 
 ### Patch Changes
