@@ -240,10 +240,11 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
   app.get('/api/auth/status', (_req, res) => {
     const servers = getHttpServerAuthStatus();
 
-    // Group servers by provider for higher-level auth UX
+    // Group servers by provider for higher-level auth UX.
+    // Servers without a known provider go into the "__no_provider__" bucket.
     const groups: Record<string, typeof servers> = {};
     for (const s of servers) {
-      const key = s.provider ?? '__ungrouped__';
+      const key = s.provider ?? '__no_provider__';
       (groups[key] ??= []).push(s);
     }
 
