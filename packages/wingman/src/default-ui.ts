@@ -506,8 +506,11 @@ export function getDefaultHtml(ui: {
     }
 
     async function handleSignIn(serverUrl, btn) {
+      // Guard: if this button is currently showing "Cancel", skip re-entry
+      if (btn.classList.contains('sign-out')) return;
       btn.disabled = true;
       btn.textContent = 'Opening\\u2026';
+      const ac = new AbortController();
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
@@ -519,23 +522,49 @@ export function getDefaultHtml(ui: {
           throw new Error(err.error || 'Login failed');
         }
         const { authUrl, state } = await res.json();
-        const popup = window.open(authUrl, '_blank', 'width=600,height=700,noopener,noreferrer');
+        const popup = window.open(authUrl, '_blank', 'width=600,height=700');
+        if (popup) popup.opener = null;
         if (!popup) {
           btn.textContent = 'Sign in';
           btn.disabled = false;
           showPanelError('Popup blocked \\u2014 allow popups and try again.');
           return;
         }
-        btn.textContent = 'Waiting\\u2026';
-        const waitRes = await fetch('/api/auth/wait/' + encodeURIComponent(state));
-        if (!waitRes.ok) {
-          const err = await waitRes.json().catch(() => ({}));
-          throw new Error(err.error || 'Auth flow failed');
+
+        // Show a clickable Cancel button instead of disabled Waiting
+        btn.textContent = 'Cancel';
+        btn.disabled = false;
+        btn.className = 'server-action sign-out'; // style as secondary
+        const onCancel = () => ac.abort();
+        btn.addEventListener('click', onCancel, { once: true });
+
+        // Also poll popup.closed (may fail due to COOP — that's fine)
+        const pollTimer = setInterval(() => {
+          try { if (popup.closed) ac.abort(); } catch (_) { clearInterval(pollTimer); }
+        }, 500);
+
+        try {
+          const waitRes = await fetch('/api/auth/wait/' + encodeURIComponent(state), { signal: ac.signal });
+          if (!waitRes.ok) {
+            const err = await waitRes.json().catch(() => ({}));
+            throw new Error(err.error || 'Auth flow failed');
+          }
+          fetchAuthStatus();
+        } finally {
+          clearInterval(pollTimer);
+          btn.removeEventListener('click', onCancel);
         }
-        fetchAuthStatus();
       } catch (err) {
+        if (err.name === 'AbortError') {
+          // User cancelled or closed popup — silent recovery
+          btn.textContent = 'Sign in';
+          btn.disabled = false;
+          btn.className = 'server-action sign-in';
+          return;
+        }
         btn.textContent = 'Sign in';
         btn.disabled = false;
+        btn.className = 'server-action sign-in';
         showPanelError('Sign-in failed: ' + err.message);
       }
     }
