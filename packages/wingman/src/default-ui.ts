@@ -221,9 +221,10 @@ export function getDefaultHtml(ui: {
     .session-delete {
       background: none; border: none; font-size: 14px; cursor: pointer;
       color: var(--text-secondary); padding: 2px 4px; border-radius: 4px;
-      opacity: 0; transition: opacity .15s;
+      opacity: 0; pointer-events: none; transition: opacity .15s;
     }
-    .session-item:hover .session-delete { opacity: 1; }
+    .session-item:hover .session-delete,
+    .session-delete:focus-visible { opacity: 1; pointer-events: auto; }
     .session-delete:hover { color: #ef4444; background: var(--bg-secondary); }
     .sidebar-empty {
       text-align: center; color: var(--text-secondary); padding: 24px 16px;
@@ -313,7 +314,7 @@ export function getDefaultHtml(ui: {
     <div class="sidebar-header">
       <h2>Chat History</h2>
     </div>
-    <button id="new-chat-btn">+ New chat</button>
+    <button id="new-chat-btn" type="button">+ New chat</button>
     <div id="session-list">
       <div class="sidebar-empty">No conversations yet.</div>
     </div>
@@ -476,7 +477,7 @@ export function getDefaultHtml(ui: {
         if (fullText) {
           chatMessages.push({ role: 'assistant', text: fullText });
         }
-        saveCurrentSession();
+        try { saveCurrentSession(); } catch (_) { /* storage errors must not block UI reset */ }
         busy = false;
         form.querySelector('button').disabled = false;
         input.focus();
@@ -493,12 +494,15 @@ export function getDefaultHtml(ui: {
 
     function loadSessions() {
       try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        return Array.isArray(parsed) ? parsed : [];
       } catch (_) { return []; }
     }
 
     function saveSessions(list) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, MAX_SESSIONS)));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, MAX_SESSIONS)));
+      } catch (_) { /* quota exceeded or storage disabled — silently ignore */ }
     }
 
     let activeSessionKey = null;
@@ -592,28 +596,41 @@ export function getDefaultHtml(ui: {
         sessionListEl.innerHTML = '<div class="sidebar-empty">No conversations yet.</div>';
         return;
       }
-      sessionListEl.innerHTML = sessions.map(s => {
-        const t = (s.title || 'New chat').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-        const active = s.key === activeSessionKey ? ' active' : '';
-        return '<div class="session-item' + active + '" data-key="' + s.key + '">'
-          + '<div class="session-item-content">'
-          + '<div class="session-title">' + t + '</div>'
-          + '<div class="session-date">' + formatDate(s.updatedAt || s.createdAt) + '</div>'
-          + '</div>'
-          + '<button class="session-delete" data-key="' + s.key + '" aria-label="Delete session" title="Delete">&times;</button>'
-          + '</div>';
-      }).join('');
+      sessionListEl.innerHTML = '';
+      sessions.forEach(s => {
+        const item = document.createElement('div');
+        item.className = 'session-item' + (s.key === activeSessionKey ? ' active' : '');
+        item.dataset.key = s.key;
 
-      sessionListEl.querySelectorAll('.session-item').forEach(el => {
-        el.addEventListener('click', (e) => {
+        const content = document.createElement('div');
+        content.className = 'session-item-content';
+        const titleEl = document.createElement('div');
+        titleEl.className = 'session-title';
+        titleEl.textContent = s.title || 'New chat';
+        const dateEl = document.createElement('div');
+        dateEl.className = 'session-date';
+        dateEl.textContent = formatDate(s.updatedAt || s.createdAt);
+        content.appendChild(titleEl);
+        content.appendChild(dateEl);
+
+        const del = document.createElement('button');
+        del.className = 'session-delete';
+        del.setAttribute('aria-label', 'Delete session');
+        del.title = 'Delete';
+        del.textContent = '\\u00d7';
+        del.type = 'button';
+
+        item.appendChild(content);
+        item.appendChild(del);
+        sessionListEl.appendChild(item);
+
+        item.addEventListener('click', (e) => {
           if (e.target.closest('.session-delete')) return;
-          loadSession(el.dataset.key);
+          loadSession(s.key);
         });
-      });
-      sessionListEl.querySelectorAll('.session-delete').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        del.addEventListener('click', (e) => {
           e.stopPropagation();
-          deleteSession(btn.dataset.key);
+          deleteSession(s.key);
         });
       });
     }
@@ -622,7 +639,6 @@ export function getDefaultHtml(ui: {
 
     // Initialize
     startNewChat();
-    renderSessionList();
 
     // ── Auth panel logic ──────────────────────────────────────────
     const authBtn = document.getElementById('auth-btn');
