@@ -59,6 +59,8 @@ export interface McpServerAuth {
   expiresAt?: number;
   error?: string;
   oauthConfig?: OAuthServerConfig | null;
+  /** Provider label derived from the OAuth authorization endpoint (e.g., "Microsoft 365"). */
+  provider?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -6,10 +6,14 @@ export interface McpAuthEntry {
   status: 'authenticated' | 'needs_auth' | 'no_auth_required' | 'error';
   expiresAt?: number;
   error?: string;
+  /** Provider label derived from the OAuth authorization endpoint (e.g., "Microsoft"). */
+  provider?: string;
 }
 
 interface AuthState {
   mcpAuth: McpAuthEntry[];
+  /** Servers grouped by provider (from API). */
+  groups: Record<string, McpAuthEntry[]>;
   loading: boolean;
   error: string | null;
   /** Servers currently going through OAuth flow. */
@@ -18,6 +22,8 @@ interface AuthState {
 
 export interface UseAuthStatusReturn {
   mcpAuth: McpAuthEntry[];
+  /** Servers grouped by provider (e.g., "Microsoft", "GitHub"). */
+  groups: Record<string, McpAuthEntry[]>;
   loading: boolean;
   error: string | null;
   pendingLogins: Set<string>;
@@ -39,6 +45,7 @@ export interface UseAuthStatusReturn {
 export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStatusReturn {
   const [state, setState] = useState<AuthState>({
     mcpAuth: [],
+    groups: {},
     loading: true,
     error: null,
     pendingLogins: new Set(),
@@ -56,6 +63,7 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
       setState((prev) => ({
         ...prev,
         mcpAuth: data.servers ?? [],
+        groups: data.groups ?? {},
         loading: false,
         error: null,
       }));
@@ -157,6 +165,7 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
 
   return {
     mcpAuth: state.mcpAuth,
+    groups: state.groups,
     loading: state.loading,
     error: state.error,
     pendingLogins: state.pendingLogins,
