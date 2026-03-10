@@ -1,5 +1,27 @@
 # @wingmanjs/core
 
+## 0.4.0
+
+### Minor Changes
+
+- d91c9b3: feat(auth): group MCP servers by OAuth provider in connections panel
+
+  Servers requiring OAuth are now grouped by provider (e.g. "Microsoft", "Google", "GitHub") in the auth settings panel. Each group shows a "Sign in to all" button for batch authentication. The /api/auth/status endpoint returns both flat servers and grouped data.
+
+- 0d15188: feat: add auth settings panel to default chat UI
+
+  Adds a Connections panel to the built-in chat UI that displays MCP server
+  auth status and provides sign-in/sign-out buttons. Closes #38.
+
+### Patch Changes
+
+- 69f26e6: fix: clear pending auth state when OAuth window is closed or cancelled
+  - Add "Cancel" button in default UI during OAuth wait (replaces disabled "Waiting…")
+  - Handle Cross-Origin-Opener-Policy (COOP) that blocks popup.closed polling
+  - Add cancelLogin() to useAuthStatus hook for React apps
+  - Prevent reverse-tabnabbing without losing popup window reference
+  - Guard against re-entrant sign-in when Cancel button is clicked
+
 ## 0.3.0
 
 ### Minor Changes
