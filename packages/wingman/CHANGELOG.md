@@ -1,5 +1,11 @@
 # @wingmanjs/core
 
+## 0.2.2
+
+### Patch Changes
+
+- f7e9d7c: Handle EADDRINUSE gracefully with a friendly error message instead of an unhandled crash. Support PORT environment variable for easy port overrides.
+
 ## 0.2.1
 
 ### Patch Changes
