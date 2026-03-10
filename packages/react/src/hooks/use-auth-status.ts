@@ -24,6 +24,8 @@ export interface UseAuthStatusReturn {
   needsAuth: boolean;
   login: (serverUrl: string) => Promise<void>;
   logout: (serverUrl: string) => Promise<void>;
+  /** Cancel an in-progress login for a specific server. */
+  cancelLogin: (serverUrl: string) => void;
   refresh: () => Promise<void>;
 }
 
@@ -45,6 +47,7 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
   });
 
   const pendingLoginsRef = useRef(new Set<string>());
+  const abortControllersRef = useRef(new Map<string, AbortController>());
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -87,8 +90,10 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
     }));
 
     // Open a blank window immediately (synchronous with user gesture)
-    // to avoid popup blockers, then redirect once we have the auth URL
-    const authWindow = window.open('about:blank', '_blank', 'noopener');
+    // to avoid popup blockers, then redirect once we have the auth URL.
+    // Avoid 'noopener' here so we retain a window reference for close detection.
+    const authWindow = window.open('about:blank', '_blank');
+    if (authWindow) authWindow.opener = null; // prevent reverse-tabnabbing
 
     try {
       // Request auth URL from backend
@@ -110,25 +115,56 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
         authWindow.location.href = authUrl;
       } else {
         // Fallback if window was blocked
-        window.open(authUrl, '_blank', 'noopener,noreferrer');
+        const fallback = window.open(authUrl, '_blank');
+        if (fallback) fallback.opener = null;
       }
 
-      // Wait for the callback (long poll)
-      const waitRes = await fetch(`${apiUrl}/api/auth/wait/${flowState}`);
-      if (!waitRes.ok) {
-        const errData = await waitRes.json();
-        throw new Error(errData.error ?? 'Authentication failed');
+      // Wait for callback, but abort if the auth window is closed.
+      // COOP headers on OAuth providers may block popup.closed access — handle gracefully.
+      const abortController = new AbortController();
+      abortControllersRef.current.set(serverUrl, abortController);
+      let windowPollTimer: ReturnType<typeof setInterval> | undefined;
+
+      if (authWindow) {
+        windowPollTimer = setInterval(() => {
+          try {
+            if (authWindow.closed) {
+              abortController.abort();
+              if (windowPollTimer) clearInterval(windowPollTimer);
+            }
+          } catch {
+            // COOP blocks cross-origin popup.closed — stop polling
+            if (windowPollTimer) clearInterval(windowPollTimer);
+          }
+        }, 500);
       }
 
-      // Refresh status
-      await fetchStatus();
+      try {
+        const waitRes = await fetch(`${apiUrl}/api/auth/wait/${flowState}`, {
+          signal: abortController.signal,
+        });
+        if (!waitRes.ok) {
+          const errData = await waitRes.json();
+          throw new Error(errData.error ?? 'Authentication failed');
+        }
+        // Refresh status
+        await fetchStatus();
+      } finally {
+        if (windowPollTimer) clearInterval(windowPollTimer);
+      }
     } catch (e: unknown) {
-      console.error('[Auth] Login failed:', e);
-      setState((prev) => ({
-        ...prev,
-        error: e instanceof Error ? e.message : String(e),
-      }));
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        // User closed the auth window — not a real error
+        console.info('[Auth] Login cancelled — auth window was closed');
+      } else {
+        console.error('[Auth] Login failed:', e);
+        setState((prev) => ({
+          ...prev,
+          error: e instanceof Error ? e.message : String(e),
+        }));
+      }
     } finally {
+      abortControllersRef.current.delete(serverUrl);
       pendingLoginsRef.current.delete(serverUrl);
       setState((prev) => ({
         ...prev,
@@ -153,6 +189,14 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
     }
   }, [apiUrl, fetchStatus]);
 
+  /**
+   * Cancel an in-progress login for a specific server URL.
+   */
+  const cancelLogin = useCallback((serverUrl: string) => {
+    const ac = abortControllersRef.current.get(serverUrl);
+    if (ac) ac.abort();
+  }, []);
+
   const needsAuth = state.mcpAuth.some((s) => s.status === 'needs_auth');
 
   return {
@@ -163,6 +207,7 @@ export function useAuthStatus(pollIntervalMs = 30_000, apiUrl = ''): UseAuthStat
     needsAuth,
     login,
     logout,
+    cancelLogin,
     refresh: fetchStatus,
   };
 }
