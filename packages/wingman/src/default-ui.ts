@@ -237,7 +237,7 @@ export function getDefaultHtml(ui: {
     <span class="logo">🦜</span>
     <h1>${title}</h1>
     <div class="header-spacer"></div>
-    <button id="auth-btn" title="Connections">
+    <button id="auth-btn" aria-label="Connections" aria-expanded="false" aria-controls="auth-panel">
       🔌<span class="auth-badge hidden" id="auth-badge">0</span>
     </button>
   </header>
@@ -246,7 +246,7 @@ export function getDefaultHtml(ui: {
   <div id="auth-panel">
     <div class="panel-header">
       <h2>Connections</h2>
-      <button class="panel-close" id="panel-close">&times;</button>
+      <button class="panel-close" id="panel-close" type="button" aria-label="Close connections panel">&times;</button>
     </div>
     <div class="panel-body" id="panel-body">
       <div class="panel-empty">Loading&hellip;</div>
@@ -401,10 +401,23 @@ export function getDefaultHtml(ui: {
     const panelClose = document.getElementById('panel-close');
     const panelBody = document.getElementById('panel-body');
 
+    function showPanelError(msg) {
+      let el = panelBody.querySelector('.panel-error');
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'panel-error';
+        el.style.cssText = 'color:#ef4444;font-size:13px;padding:8px 0;';
+        panelBody.prepend(el);
+      }
+      el.textContent = msg;
+      setTimeout(() => el.remove(), 6000);
+    }
+
     function togglePanel(open) {
       const isOpen = open ?? !authPanel.classList.contains('open');
       authPanel.classList.toggle('open', isOpen);
       authOverlay.classList.toggle('open', isOpen);
+      authBtn.setAttribute('aria-expanded', String(isOpen));
       if (isOpen) fetchAuthStatus();
     }
     authBtn.addEventListener('click', () => togglePanel());
@@ -444,17 +457,20 @@ export function getDefaultHtml(ui: {
       panelBody.innerHTML = servers.map(s => {
         const name = s.serverName.replace(/&/g,'&amp;').replace(/</g,'&lt;');
         const url = s.serverUrl.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+        const attrUrl = s.serverUrl.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        const validStatuses = ['authenticated','needs_auth','no_auth_required','error'];
+        const statusClass = validStatuses.includes(s.status) ? s.status : 'error';
         const expiry = s.status === 'authenticated' ? expiryLabel(s.expiresAt) : '';
         let action = '';
         if (s.status === 'needs_auth') {
-          action = '<button class="server-action sign-in" data-url="' + s.serverUrl.replace(/"/g,'&quot;') + '">Sign in</button>';
+          action = '<button class="server-action sign-in" data-url="' + attrUrl + '">Sign in</button>';
         } else if (s.status === 'authenticated') {
-          action = '<button class="server-action sign-out" data-url="' + s.serverUrl.replace(/"/g,'&quot;') + '">Sign out</button>';
+          action = '<button class="server-action sign-out" data-url="' + attrUrl + '">Sign out</button>';
         }
         const errorLine = s.error ? '<div class="server-status" style="color:#ef4444">' + s.error.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>' : '';
         return '<div class="server-card">'
           + '<div class="server-card-header">'
-          + '  <span class="status-dot ' + s.status + '"></span>'
+          + '  <span class="status-dot ' + statusClass + '"></span>'
           + '  <span class="server-name">' + name + '</span>'
           + '</div>'
           + '<div class="server-status">' + statusLabel(s.status) + (expiry ? ' \\u00b7 ' + expiry : '') + '</div>'
@@ -475,7 +491,11 @@ export function getDefaultHtml(ui: {
     async function fetchAuthStatus() {
       try {
         const res = await fetch('/api/auth/status');
-        if (!res.ok) return;
+        if (!res.ok) {
+          panelBody.innerHTML = '<div class="panel-empty">Could not load auth status.</div>';
+          authBadge.classList.add('hidden');
+          return;
+        }
         const data = await res.json();
         renderServers(data.servers || []);
       } catch (_) {
@@ -497,7 +517,7 @@ export function getDefaultHtml(ui: {
           throw new Error(err.error || 'Login failed');
         }
         const { authUrl, state } = await res.json();
-        window.open(authUrl, '_blank', 'width=600,height=700');
+        window.open(authUrl, '_blank', 'width=600,height=700,noopener,noreferrer');
         btn.textContent = 'Waiting\\u2026';
         const waitRes = await fetch('/api/auth/wait/' + encodeURIComponent(state));
         if (!waitRes.ok) {
@@ -508,7 +528,7 @@ export function getDefaultHtml(ui: {
       } catch (err) {
         btn.textContent = 'Sign in';
         btn.disabled = false;
-        alert('Sign-in failed: ' + err.message);
+        showPanelError('Sign-in failed: ' + err.message);
       }
     }
 
@@ -529,7 +549,7 @@ export function getDefaultHtml(ui: {
       } catch (err) {
         btn.textContent = 'Sign out';
         btn.disabled = false;
-        alert('Sign-out failed: ' + err.message);
+        showPanelError('Sign-out failed: ' + err.message);
       }
     }
 
