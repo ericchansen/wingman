@@ -17,7 +17,7 @@ export function getDefaultHtml(ui: {
   const welcome = esc(ui.welcomeMessage ?? 'How can I help?');
   const validThemes = ['dark', 'light', 'system'] as const;
   const theme = validThemes.includes(ui.theme as typeof validThemes[number])
-    ? ui.theme! : 'system';
+    ? ui.theme! : 'dark';
 
   return /* html */ `<!DOCTYPE html>
 <html lang="en" data-theme="${theme}">
@@ -53,7 +53,19 @@ export function getDefaultHtml(ui: {
     html, body { height: 100%; }
     body {
       font-family: var(--font); background: var(--bg); color: var(--text);
-      display: flex; flex-direction: column;
+      display: flex; flex-direction: row;
+    }
+
+    /* Persistent history sidebar */
+    #history-sidebar {
+      width: 260px; min-width: 260px; height: 100%;
+      background: var(--bg); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; flex-shrink: 0;
+    }
+
+    #main-content {
+      flex: 1; display: flex; flex-direction: column;
+      min-width: 0; height: 100%;
     }
 
     header {
@@ -65,6 +77,14 @@ export function getDefaultHtml(ui: {
     header h1 { font-size: 18px; font-weight: 600; }
     header { justify-content: flex-start; }
     .header-spacer { flex: 1; }
+
+    @media (max-width: 640px) {
+      body { flex-direction: column; }
+      #history-sidebar {
+        width: 100%; min-width: unset; height: auto; max-height: 40vh;
+        border-right: none; border-bottom: 1px solid var(--border);
+      }
+    }
 
     /* Auth settings button */
     #auth-btn {
@@ -169,6 +189,47 @@ export function getDefaultHtml(ui: {
     }
     #auth-overlay.open { display: block; }
 
+    /* History sidebar internals */
+    .sidebar-header {
+      padding: 16px 16px 12px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .sidebar-header h2 { font-size: 15px; font-weight: 600; }
+    #new-chat-btn {
+      margin: 10px 16px 6px; padding: 8px 12px; border-radius: 8px;
+      border: 1px dashed var(--border); background: none; color: var(--primary);
+      font-size: 13px; font-weight: 500; cursor: pointer; text-align: left;
+    }
+    #new-chat-btn:hover { background: var(--bg-secondary); border-style: solid; }
+    #session-list {
+      flex: 1; overflow-y: auto; padding: 6px 0;
+    }
+    .session-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 16px; cursor: pointer; font-size: 13px;
+      border-left: 3px solid transparent;
+    }
+    .session-item:hover { background: var(--bg-secondary); }
+    .session-item.active { background: var(--bg-secondary); border-left-color: var(--primary); }
+    .session-item-content { flex: 1; min-width: 0; }
+    .session-title {
+      font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .session-date {
+      font-size: 11px; color: var(--text-secondary); margin-top: 2px;
+    }
+    .session-delete {
+      background: none; border: none; font-size: 14px; cursor: pointer;
+      color: var(--text-secondary); padding: 2px 4px; border-radius: 4px;
+      opacity: 0; transition: opacity .15s;
+    }
+    .session-item:hover .session-delete { opacity: 1; }
+    .session-delete:hover { color: #ef4444; background: var(--bg-secondary); }
+    .sidebar-empty {
+      text-align: center; color: var(--text-secondary); padding: 24px 16px;
+      font-size: 13px;
+    }
+
     #messages {
       flex: 1; overflow-y: auto; padding: 24px;
       display: flex; flex-direction: column; gap: 16px;
@@ -248,6 +309,17 @@ export function getDefaultHtml(ui: {
   </style>
 </head>
 <body>
+  <div id="history-sidebar">
+    <div class="sidebar-header">
+      <h2>Chat History</h2>
+    </div>
+    <button id="new-chat-btn">+ New chat</button>
+    <div id="session-list">
+      <div class="sidebar-empty">No conversations yet.</div>
+    </div>
+  </div>
+
+  <div id="main-content">
   <header>
     <span class="logo">🦜</span>
     <h1>${title}</h1>
@@ -337,6 +409,7 @@ export function getDefaultHtml(ui: {
       input.style.height = 'auto';
 
       addMessage('user', text);
+      chatMessages.push({ role: 'user', text: text });
 
       const assistantDiv = addMessage('assistant', '');
       assistantDiv.classList.add('typing');
@@ -400,6 +473,10 @@ export function getDefaultHtml(ui: {
         addMessage('error', 'Error: ' + err.message);
       } finally {
         assistantDiv.classList.remove('typing');
+        if (fullText) {
+          chatMessages.push({ role: 'assistant', text: fullText });
+        }
+        saveCurrentSession();
         busy = false;
         form.querySelector('button').disabled = false;
         input.focus();
@@ -407,6 +484,145 @@ export function getDefaultHtml(ui: {
     });
 
     input.focus();
+
+    // ── Session history logic ─────────────────────────────────────
+    const STORAGE_KEY = 'wingman-chat-history';
+    const MAX_SESSIONS = 50;
+    const newChatBtn = document.getElementById('new-chat-btn');
+    const sessionListEl = document.getElementById('session-list');
+
+    function loadSessions() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      } catch (_) { return []; }
+    }
+
+    function saveSessions(list) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, MAX_SESSIONS)));
+    }
+
+    let activeSessionKey = null;
+    let chatMessages = [];
+
+    function deriveTitle(text) {
+      const t = text.replace(/\\n/g, ' ').trim();
+      return t.length > 50 ? t.slice(0, 47) + '...' : t;
+    }
+
+    function formatDate(ts) {
+      const d = new Date(ts);
+      const now = new Date();
+      const diffMs = now - d;
+      const diffMins = Math.round(diffMs / 60000);
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return diffMins + 'm ago';
+      const diffHrs = Math.round(diffMins / 60);
+      if (diffHrs < 24) return diffHrs + 'h ago';
+      const diffDays = Math.round(diffHrs / 24);
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7) return diffDays + 'd ago';
+      return d.toLocaleDateString();
+    }
+
+    function saveCurrentSession() {
+      if (!activeSessionKey || chatMessages.length === 0) return;
+      const sessions = loadSessions();
+      const idx = sessions.findIndex(s => s.key === activeSessionKey);
+      const title = deriveTitle(
+        (chatMessages.find(m => m.role === 'user') || {}).text || 'New chat'
+      );
+      const entry = {
+        key: activeSessionKey,
+        serverSessionId: sessionId,
+        title: title,
+        messages: chatMessages,
+        updatedAt: Date.now(),
+        createdAt: idx >= 0 ? sessions[idx].createdAt : Date.now(),
+      };
+      if (idx >= 0) sessions.splice(idx, 1);
+      sessions.unshift(entry);
+      saveSessions(sessions);
+      renderSessionList();
+    }
+
+    function startNewChat() {
+      activeSessionKey = 'wm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      sessionId = null;
+      chatMessages = [];
+      messages.innerHTML = '<div class="welcome"><h2>${welcome}</h2><p>Type a message below to get started.</p></div>';
+      input.focus();
+      renderSessionList();
+    }
+
+    function loadSession(key) {
+      const sessions = loadSessions();
+      const s = sessions.find(s => s.key === key);
+      if (!s) return;
+
+      activeSessionKey = s.key;
+      sessionId = s.serverSessionId || null;
+      chatMessages = s.messages || [];
+
+      messages.innerHTML = '';
+      for (const m of chatMessages) {
+        const div = document.createElement('div');
+        div.className = 'msg ' + m.role;
+        if (m.role === 'assistant') {
+          div.innerHTML = renderMarkdownLite(m.text);
+        } else {
+          div.textContent = m.text;
+        }
+        messages.appendChild(div);
+      }
+      messages.scrollTop = messages.scrollHeight;
+      input.focus();
+      renderSessionList();
+    }
+
+    function deleteSession(key) {
+      const sessions = loadSessions().filter(s => s.key !== key);
+      saveSessions(sessions);
+      if (activeSessionKey === key) startNewChat();
+      renderSessionList();
+    }
+
+    function renderSessionList() {
+      const sessions = loadSessions();
+      if (sessions.length === 0) {
+        sessionListEl.innerHTML = '<div class="sidebar-empty">No conversations yet.</div>';
+        return;
+      }
+      sessionListEl.innerHTML = sessions.map(s => {
+        const t = (s.title || 'New chat').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+        const active = s.key === activeSessionKey ? ' active' : '';
+        return '<div class="session-item' + active + '" data-key="' + s.key + '">'
+          + '<div class="session-item-content">'
+          + '<div class="session-title">' + t + '</div>'
+          + '<div class="session-date">' + formatDate(s.updatedAt || s.createdAt) + '</div>'
+          + '</div>'
+          + '<button class="session-delete" data-key="' + s.key + '" aria-label="Delete session" title="Delete">&times;</button>'
+          + '</div>';
+      }).join('');
+
+      sessionListEl.querySelectorAll('.session-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          if (e.target.closest('.session-delete')) return;
+          loadSession(el.dataset.key);
+        });
+      });
+      sessionListEl.querySelectorAll('.session-delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteSession(btn.dataset.key);
+        });
+      });
+    }
+
+    newChatBtn.addEventListener('click', () => startNewChat());
+
+    // Initialize
+    startNewChat();
+    renderSessionList();
 
     // ── Auth panel logic ──────────────────────────────────────────
     const authBtn = document.getElementById('auth-btn');
@@ -649,6 +865,7 @@ export function getDefaultHtml(ui: {
     // Fetch auth status on load to show badge
     fetchAuthStatus();
   </script>
+  </div><!-- /main-content -->
 </body>
 </html>`;
 }

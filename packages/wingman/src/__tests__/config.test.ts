@@ -32,7 +32,7 @@ describe('resolveConfig', () => {
     expect(resolved.systemPrompt).toBe(DEFAULT_CONFIG.systemPrompt);
     expect(resolved.model).toBe(DEFAULT_CONFIG.model);
     expect(resolved.ui.title).toBe('Wingman');
-    expect(resolved.ui.theme).toBe('system');
+    expect(resolved.ui.theme).toBe('dark');
     expect(resolved.ui.showTokenUsage).toBe(true);
     expect(resolved.ui.showModelPicker).toBe(true);
     expect(resolved.server.port).toBe(3000);
@@ -128,7 +128,7 @@ describe('DEFAULT_CONFIG', () => {
 
   it('has complete ui defaults', () => {
     expect(DEFAULT_CONFIG.ui.title).toBe('Wingman');
-    expect(DEFAULT_CONFIG.ui.theme).toBe('system');
+    expect(DEFAULT_CONFIG.ui.theme).toBe('dark');
     expect(DEFAULT_CONFIG.ui.welcomeMessage).toBe('How can I help?');
     expect(typeof DEFAULT_CONFIG.ui.showTokenUsage).toBe('boolean');
     expect(typeof DEFAULT_CONFIG.ui.showModelPicker).toBe('boolean');
