@@ -147,6 +147,21 @@ export function getDefaultHtml(ui: {
     .server-action.sign-out:hover { background: var(--bg-secondary); }
     .server-action:disabled { opacity: .5; cursor: not-allowed; }
 
+    /* Auth provider groups */
+    .auth-group { margin-bottom: 16px; }
+    .auth-group-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 0; margin-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .auth-group-label {
+      font-size: 12px; font-weight: 600; text-transform: uppercase;
+      color: var(--text-secondary); letter-spacing: 0.05em;
+    }
+    .sign-in-all {
+      font-size: 11px; padding: 2px 10px;
+    }
+
     /* Overlay behind panel */
     #auth-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,.3);
@@ -441,7 +456,7 @@ export function getDefaultHtml(ui: {
       return 'Expires in ' + Math.round(mins / 60) + 'h';
     }
 
-    function renderServers(servers) {
+    function renderServers(servers, groups) {
       if (!servers || servers.length === 0) {
         panelBody.innerHTML = '<div class="panel-empty">No MCP servers configured.</div>';
         authBadge.classList.add('hidden');
@@ -455,7 +470,7 @@ export function getDefaultHtml(ui: {
         authBadge.classList.add('hidden');
       }
 
-      panelBody.innerHTML = servers.map(s => {
+      function renderCard(s) {
         const name = s.serverName.replace(/&/g,'&amp;').replace(/</g,'&lt;');
         const url = s.serverUrl.replace(/&/g,'&amp;').replace(/</g,'&lt;');
         const attrUrl = s.serverUrl.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -479,10 +494,45 @@ export function getDefaultHtml(ui: {
           + '<div class="server-url">' + url + '</div>'
           + action
           + '</div>';
-      }).join('');
+      }
 
-      panelBody.querySelectorAll('.sign-in').forEach(btn => {
+      // Render grouped if groups are provided, flat otherwise
+      if (groups && Object.keys(groups).length > 1) {
+        const html = [];
+        for (const [provider, list] of Object.entries(groups)) {
+          const label = provider === '__ungrouped__' ? 'Other' : provider.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+          const groupNeeds = list.filter(s => s.status === 'needs_auth');
+          html.push('<div class="auth-group">');
+          html.push('<div class="auth-group-header">');
+          html.push('<span class="auth-group-label">' + label + ' (' + list.length + ')</span>');
+          if (groupNeeds.length > 1) {
+            const urls = groupNeeds.map(s => s.serverUrl.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'));
+            html.push('<button class="server-action sign-in sign-in-all" data-urls=\\'' + JSON.stringify(urls) + '\\'>Sign in to all</button>');
+          }
+          html.push('</div>');
+          html.push(list.map(renderCard).join(''));
+          html.push('</div>');
+        }
+        panelBody.innerHTML = html.join('');
+      } else {
+        panelBody.innerHTML = servers.map(renderCard).join('');
+      }
+
+      panelBody.querySelectorAll('.sign-in:not(.sign-in-all)').forEach(btn => {
         btn.addEventListener('click', () => handleSignIn(btn.dataset.url, btn));
+      });
+      panelBody.querySelectorAll('.sign-in-all').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const urls = JSON.parse(btn.dataset.urls || '[]');
+          btn.disabled = true;
+          btn.textContent = 'Opening\\u2026';
+          for (const url of urls) {
+            const serverBtn = panelBody.querySelector('.sign-in[data-url="' + url + '"]');
+            if (serverBtn) await handleSignIn(url, serverBtn);
+          }
+          btn.textContent = 'Sign in to all';
+          btn.disabled = false;
+        });
       });
       panelBody.querySelectorAll('.sign-out').forEach(btn => {
         btn.addEventListener('click', () => handleSignOut(btn.dataset.url, btn));
@@ -498,7 +548,7 @@ export function getDefaultHtml(ui: {
           return;
         }
         const data = await res.json();
-        renderServers(data.servers || []);
+        renderServers(data.servers || [], data.groups);
       } catch (_) {
         panelBody.innerHTML = '<div class="panel-empty">Could not load auth status.</div>';
         authBadge.classList.add('hidden');

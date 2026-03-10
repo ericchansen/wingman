@@ -238,7 +238,16 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
 
   /** Auth status for HTTP MCP servers (token health, which need login). */
   app.get('/api/auth/status', (_req, res) => {
-    res.json({ servers: getHttpServerAuthStatus() });
+    const servers = getHttpServerAuthStatus();
+
+    // Group servers by provider for higher-level auth UX
+    const groups: Record<string, typeof servers> = {};
+    for (const s of servers) {
+      const key = s.provider ?? '__ungrouped__';
+      (groups[key] ??= []).push(s);
+    }
+
+    res.json({ servers, groups });
   });
 
   /** Start OAuth flow for a remote MCP server. Returns the auth URL. */

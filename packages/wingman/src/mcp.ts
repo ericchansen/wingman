@@ -217,6 +217,26 @@ const NEGATIVE_CACHE_TTL_MS = 60_000; // 60 seconds
 /** Track which HTTP servers need auth so the server layer can expose login routes. */
 let _lastAuthStatus: McpServerAuth[] = [];
 
+/**
+ * Derive a user-friendly provider label from an OAuth authorization endpoint.
+ * Groups servers that share the same identity provider under one label.
+ */
+function deriveProvider(authEndpoint: string | undefined): string | undefined {
+  if (!authEndpoint) return undefined;
+  try {
+    const host = new URL(authEndpoint).hostname.toLowerCase();
+    if (host.includes('login.microsoftonline.com') || host.includes('login.microsoft.com')) {
+      return 'Microsoft';
+    }
+    if (host.includes('accounts.google.com')) return 'Google';
+    if (host.includes('github.com')) return 'GitHub';
+    // Return the domain as a fallback provider label
+    return host.replace(/^(login|auth|accounts|id)\./i, '').replace(/\.(com|io|org|net)$/i, '');
+  } catch {
+    return undefined;
+  }
+}
+
 /** Get the auth status from the most recent discovery run. */
 export function getHttpServerAuthStatus(): McpServerAuth[] {
   return _lastAuthStatus;
@@ -409,6 +429,7 @@ async function injectOAuthHeaders(
           serverName: name,
           status: 'needs_auth',
           oauthConfig,
+          provider: deriveProvider(oauthConfig.authorizationEndpoint),
         });
         console.log(`  🔓 ${name} — needs sign-in (OAuth required)`);
       } else {
