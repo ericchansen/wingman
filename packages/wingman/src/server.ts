@@ -16,6 +16,7 @@ import type { WingmanConfig } from './types.js';
 import { resolveConfig } from './config.js';
 import { discoverWithDiagnostics, getHttpServerAuthStatus, refreshAuthStatusForServer } from './mcp.js';
 import { initTelemetry, shutdownTelemetry } from './instrumentation.js';
+import { getDefaultHtml } from './default-ui.js';
 import {
   startAuthFlow,
   waitForCallback,
@@ -464,6 +465,12 @@ export function createServer(options: CreateServerOptions = {}): ServerInstance 
     // SPA fallback — serve index.html for all non-API routes
     app.get('*', (_req, res) => {
       res.sendFile(resolve(options.staticDir!, 'index.html'));
+    });
+  } else {
+    // No custom UI — serve the built-in chat page
+    const html = getDefaultHtml(config.ui);
+    app.get('/', (_req, res) => {
+      res.type('html').send(html);
     });
   }
 

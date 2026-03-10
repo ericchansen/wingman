@@ -86,7 +86,7 @@ export class WingmanClient {
     const sessionConfig = {
       model: this.config.model,
       streaming: true,
-      reasoningEffort: this.config.reasoningEffort,
+      ...(this.config.reasoningEffort ? { reasoningEffort: this.config.reasoningEffort } : {}),
       systemMessage: { content: this.config.systemPrompt },
       mcpServers,
       skillDirectories: this.config.skillDirectories,
@@ -108,10 +108,26 @@ export class WingmanClient {
       `${this.config.tools?.length ?? 0} tools`);
 
     let session;
-    if (sessionId) {
-      session = await client.resumeSession(sessionId, sessionConfig);
-    } else {
-      session = await client.createSession(sessionConfig);
+    try {
+      if (sessionId) {
+        session = await client.resumeSession(sessionId, sessionConfig);
+      } else {
+        session = await client.createSession(sessionConfig);
+      }
+    } catch (err: unknown) {
+      // Some models don't support reasoningEffort — retry without it
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('reasoning effort') && sessionConfig.reasoningEffort) {
+        const { reasoningEffort: _, ...retryConfig } = sessionConfig;
+        console.warn(`⚠️ Model '${this.config.model}' does not support reasoningEffort, retrying without it`);
+        if (sessionId) {
+          session = await client.resumeSession(sessionId, retryConfig);
+        } else {
+          session = await client.createSession(retryConfig);
+        }
+      } else {
+        throw err;
+      }
     }
 
     // Cache the session, evicting oldest entries if at capacity
