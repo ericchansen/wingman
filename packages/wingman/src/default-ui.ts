@@ -11,9 +11,13 @@ export function getDefaultHtml(ui: {
   welcomeMessage?: string;
   theme?: string;
 }): string {
-  const title = ui.title ?? 'Wingman';
-  const welcome = ui.welcomeMessage ?? 'How can I help?';
-  const theme = ui.theme ?? 'system';
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const title = esc(ui.title ?? 'Wingman');
+  const welcome = esc(ui.welcomeMessage ?? 'How can I help?');
+  const validThemes = ['dark', 'light', 'system'] as const;
+  const theme = validThemes.includes(ui.theme as typeof validThemes[number])
+    ? ui.theme! : 'system';
 
   return /* html */ `<!DOCTYPE html>
 <html lang="en" data-theme="${theme}">
@@ -34,7 +38,7 @@ export function getDefaultHtml(ui: {
     }
 
     @media (prefers-color-scheme: dark) {
-      :root, [data-theme="system"] {
+      [data-theme="system"] {
         --bg: #0f172a; --bg-secondary: #1e293b; --text: #f1f5f9;
         --text-secondary: #94a3b8; --border: #334155; --primary: #3b82f6;
         --primary-hover: #60a5fa; --user-bg: #1e3a5f; --assistant-bg: #1e293b;
@@ -89,10 +93,14 @@ export function getDefaultHtml(ui: {
       background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;
       align-self: center; text-align: center;
     }
-    [data-theme="dark"] .msg.error,
-    @media (prefers-color-scheme: dark) { .msg.error {
+    [data-theme="dark"] .msg.error {
       background: #450a0a; color: #fca5a5; border-color: #7f1d1d;
-    }}
+    }
+    @media (prefers-color-scheme: dark) {
+      [data-theme="system"] .msg.error {
+        background: #450a0a; color: #fca5a5; border-color: #7f1d1d;
+      }
+    }
 
     .msg code {
       font-family: var(--mono); font-size: 13px;
@@ -229,6 +237,7 @@ export function getDefaultHtml(ui: {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let currentEvent = '';
 
         while (true) {
           const { done, value } = await reader.read();
@@ -239,20 +248,19 @@ export function getDefaultHtml(ui: {
           buffer = lines.pop() || '';
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
+            if (line.startsWith('event: ')) {
+              currentEvent = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
               try {
                 const parsed = JSON.parse(line.slice(6));
-                const eventLine = lines[lines.indexOf(line) - 1];
-                const event = eventLine?.startsWith('event: ')
-                  ? eventLine.slice(7) : '';
 
-                if (event === 'delta' && parsed.content) {
+                if (currentEvent === 'delta' && parsed.content) {
                   fullText += parsed.content;
                   assistantDiv.innerHTML = renderMarkdownLite(fullText);
                   messages.scrollTop = messages.scrollHeight;
-                } else if (event === 'done' && parsed.sessionId) {
+                } else if (currentEvent === 'done' && parsed.sessionId) {
                   sessionId = parsed.sessionId;
-                } else if (event === 'error') {
+                } else if (currentEvent === 'error') {
                   assistantDiv.classList.remove('typing');
                   assistantDiv.textContent = 'Error: ' + (parsed.message || 'Unknown error');
                   assistantDiv.style.color = '#e53e3e';
@@ -260,6 +268,8 @@ export function getDefaultHtml(ui: {
               } catch (_) {
                 // Ignore JSON parse errors on partial SSE chunks
               }
+            } else if (line.trim() === '') {
+              currentEvent = '';
             }
           }
         }

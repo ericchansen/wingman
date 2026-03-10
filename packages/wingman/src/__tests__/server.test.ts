@@ -41,6 +41,30 @@ describe('createServer', () => {
     });
   });
 
+  describe('GET / (default UI)', () => {
+    it('serves built-in HTML when no staticDir is provided', async () => {
+      const { app } = createServer({
+        config: { ui: { title: 'TestBot', welcomeMessage: 'Hi there!' } },
+      });
+      const { default: request } = await import('supertest');
+      const response = await request(app).get('/');
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toMatch(/html/);
+      expect(response.text).toContain('TestBot');
+      expect(response.text).toContain('Hi there!');
+    });
+
+    it('does not serve default UI when staticDir is provided', async () => {
+      const { app } = createServer({
+        staticDir: './nonexistent-dir',
+      });
+      const { default: request } = await import('supertest');
+      const response = await request(app).get('/');
+      // staticDir takes precedence — will fail to find the file
+      expect(response.status).not.toBe(200);
+    });
+  });
+
   describe('GET /api/config', () => {
     it('returns UI config', async () => {
       const { app } = createServer({
