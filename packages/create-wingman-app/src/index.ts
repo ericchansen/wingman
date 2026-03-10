@@ -5,8 +5,43 @@ import path from 'node:path';
 import prompts from 'prompts';
 import pc from 'picocolors';
 
-const args = process.argv.slice(2);
-const projectArg = args.find((a) => !a.startsWith('-'));
+// Parse positional args properly — skip values that follow flags
+const positionalArgs: string[] = [];
+const rawArgs = process.argv.slice(2);
+for (let i = 0; i < rawArgs.length; i++) {
+  const arg = rawArgs[i];
+  if (arg.startsWith('-')) {
+    // Skip the next arg if this flag expects a value (e.g. --template minimal)
+    if (!arg.includes('=') && i + 1 < rawArgs.length && !rawArgs[i + 1].startsWith('-')) {
+      i++;
+    }
+  } else {
+    positionalArgs.push(arg);
+  }
+}
+const projectArg = positionalArgs[0];
+
+const VALID_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
+function isValidProjectName(name: string): boolean {
+  if (!name || !name.trim()) return false;
+  if (name === '.' || name === '..') return false;
+  if (name.includes('/') || name.includes('\\')) return false;
+  return VALID_NAME.test(name);
+}
+
+async function resolveLatestCoreVersion(): Promise<string> {
+  try {
+    const res = await fetch('https://registry.npmjs.org/@wingmanjs/core/latest');
+    if (res.ok) {
+      const data = (await res.json()) as { version?: string };
+      if (data.version) return `^${data.version}`;
+    }
+  } catch {
+    // Fall back to bundled version on network failure
+  }
+  return '^0.2.1';
+}
 
 function toTitle(name: string): string {
   return name
@@ -26,6 +61,8 @@ async function main() {
         name: 'name',
         message: 'Project name',
         initial: 'my-wingman-app',
+        validate: (v: string) =>
+          isValidProjectName(v) || 'Invalid name — use letters, numbers, hyphens, dots, or underscores',
       },
       {
         type: 'text',
@@ -52,6 +89,12 @@ async function main() {
   const name: string = projectArg ?? response.name;
   const title: string = response.title;
   const systemPrompt: string = response.systemPrompt;
+
+  if (!isValidProjectName(name)) {
+    console.log(pc.red(`\n  Invalid project name "${name}" — use letters, numbers, hyphens, dots, or underscores.\n`));
+    process.exit(1);
+  }
+
   const dir = path.resolve(process.cwd(), name);
 
   if (fs.existsSync(dir)) {
@@ -60,6 +103,8 @@ async function main() {
   }
 
   fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+
+  const coreVersion = await resolveLatestCoreVersion();
 
   // package.json
   const pkg = {
@@ -73,7 +118,7 @@ async function main() {
       start: 'node dist/server.js',
     },
     dependencies: {
-      '@wingmanjs/core': '^0.2.1',
+      '@wingmanjs/core': coreVersion,
     },
     devDependencies: {
       '@types/node': '^22.0.0',

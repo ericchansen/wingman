@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Wingman is configured via `defineConfig()` — a type-safe helper that provides autocomplete and validation.
+Wingman is configured via `defineConfig()` — a type-safe helper that provides autocomplete and type-checking.
 
 ```typescript
 import { startServer, defineConfig } from '@wingmanjs/core';
@@ -142,6 +142,17 @@ defineConfig({
 | **Default** | `[]` |
 
 Custom agent configurations passed to the Copilot SDK.
+
+```typescript
+defineConfig({
+  customAgents: [
+    {
+      name: 'researcher',
+      instructions: 'You are a research assistant that finds and summarizes information.',
+    },
+  ],
+});
+```
 
 ---
 

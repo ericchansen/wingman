@@ -116,7 +116,7 @@ const weatherTool: Tool = {
     required: ['city'],
   },
   execute: async ({ city }) => {
-    const res = await fetch(`https://wttr.in/${city}?format=j1`);
+    const res = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1`);
     return await res.json();
   },
 };
