@@ -478,7 +478,20 @@ export async function startServer(options: CreateServerOptions = {}): Promise<Ru
   await initTelemetry(preConfig.telemetry);
 
   const { app, client, config } = createServer(options);
-  const port = config.server.port ?? 3000;
+
+  // PORT env var overrides config (applied here, not in resolveConfig,
+  // to keep config resolution pure and deterministic for library consumers)
+  let port = config.server.port ?? 3000;
+  if (process.env.PORT) {
+    const parsed = Number(process.env.PORT);
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 65535) {
+      port = parsed;
+    } else {
+      console.warn(
+        `⚠️  Invalid PORT="${process.env.PORT}" — must be 1–65535. Using ${port}.`,
+      );
+    }
+  }
 
   // Log MCP discovery
   const discovery = await discoverWithDiagnostics(config.mcpServers);
@@ -493,11 +506,10 @@ export async function startServer(options: CreateServerOptions = {}): Promise<Ru
         if (err.code === 'EADDRINUSE') {
           console.error(
             `\n❌ Port ${port} is already in use.\n\n` +
-              `   Fix: either stop the other process, or change the port:\n\n` +
-              `     Option 1:  Change server.port in src/server.ts\n` +
-              `     Option 2:  PORT=${port + 1} npm run dev\n`,
+              `   Fix: either stop the other process, or change the port in your Wingman config:\n\n` +
+              `     Option 1:  Update server.port in your Wingman configuration\n` +
+              `     Option 2:  Use a different port, for example: PORT=3001 npm run dev\n`,
           );
-          process.exit(1);
         }
         reject(err);
       });
