@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { WingmanTracer, createTracer, createNoopCallbacks } from '../telemetry.js';
 
 describe('WingmanTracer', () => {
@@ -104,6 +105,69 @@ describe('WingmanTracer', () => {
         callbacks.onToolComplete?.('tc-1', 'msx_login', 'Error: SAML authentication failed');
         callbacks.onTurnEnd?.('turn-1');
       }).not.toThrow();
+    });
+
+    it('marks tool span as ERROR for auth failure results', () => {
+      const mockSpan = {
+        setStatus: vi.fn(),
+        setAttribute: vi.fn(),
+        setAttributes: vi.fn(),
+        recordException: vi.fn(),
+        end: vi.fn(),
+        addEvent: vi.fn(),
+        isRecording: () => true,
+        updateName: vi.fn(),
+        spanContext: () => ({ traceId: '0', spanId: '0', traceFlags: 0 }),
+      };
+      const mockTracer = { startSpan: vi.fn(() => mockSpan) };
+      vi.spyOn(trace, 'getTracer').mockReturnValue(mockTracer as unknown as ReturnType<typeof trace.getTracer>);
+
+      const t = new WingmanTracer();
+      const callbacks = t.createCallbacks('session-1', 'claude-sonnet-4');
+
+      callbacks.onTurnStart?.('turn-1');
+      callbacks.onToolStart?.({ toolCallId: 'tc-1', toolName: 'msx_login' });
+      callbacks.onToolComplete?.('tc-1', 'msx_login', '401 Unauthorized');
+      callbacks.onTurnEnd?.('turn-1');
+
+      expect(mockSpan.setStatus).toHaveBeenCalledWith(
+        expect.objectContaining({ code: SpanStatusCode.ERROR }),
+      );
+      expect(mockSpan.recordException).toHaveBeenCalled();
+
+      vi.restoreAllMocks();
+    });
+
+    it('marks tool span as OK for results containing "401" in non-error context', () => {
+      const mockSpan = {
+        setStatus: vi.fn(),
+        setAttribute: vi.fn(),
+        setAttributes: vi.fn(),
+        recordException: vi.fn(),
+        end: vi.fn(),
+        addEvent: vi.fn(),
+        isRecording: () => true,
+        updateName: vi.fn(),
+        spanContext: () => ({ traceId: '0', spanId: '0', traceFlags: 0 }),
+      };
+      const mockTracer = { startSpan: vi.fn(() => mockSpan) };
+      vi.spyOn(trace, 'getTracer').mockReturnValue(mockTracer as unknown as ReturnType<typeof trace.getTracer>);
+
+      const t = new WingmanTracer();
+      const callbacks = t.createCallbacks('session-1', 'claude-sonnet-4');
+
+      callbacks.onTurnStart?.('turn-1');
+      callbacks.onToolStart?.({ toolCallId: 'tc-1', toolName: 'search' });
+      // "401" appears as part of a larger number — should NOT be flagged as error
+      callbacks.onToolComplete?.('tc-1', 'search', 'Found account ID 94013 with 401k plan');
+      callbacks.onTurnEnd?.('turn-1');
+
+      expect(mockSpan.setStatus).toHaveBeenCalledWith(
+        expect.objectContaining({ code: SpanStatusCode.OK }),
+      );
+      expect(mockSpan.recordException).not.toHaveBeenCalled();
+
+      vi.restoreAllMocks();
     });
   });
 
