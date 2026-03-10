@@ -410,7 +410,8 @@ export function getDefaultHtml(ui: {
         panelBody.prepend(el);
       }
       el.textContent = msg;
-      setTimeout(() => el.remove(), 6000);
+      if (el._dismissTimer) clearTimeout(el._dismissTimer);
+      el._dismissTimer = setTimeout(() => el.remove(), 6000);
     }
 
     function togglePanel(open) {
@@ -429,7 +430,7 @@ export function getDefaultHtml(ui: {
       if (s === 'needs_auth') return '\\ud83d\\udd13 Sign-in required';
       if (s === 'no_auth_required') return '\\u2014 No auth needed';
       if (s === 'error') return '\\u274c Error';
-      return s;
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
     function expiryLabel(ts) {
@@ -500,6 +501,7 @@ export function getDefaultHtml(ui: {
         renderServers(data.servers || []);
       } catch (_) {
         panelBody.innerHTML = '<div class="panel-empty">Could not load auth status.</div>';
+        authBadge.classList.add('hidden');
       }
     }
 
@@ -517,7 +519,13 @@ export function getDefaultHtml(ui: {
           throw new Error(err.error || 'Login failed');
         }
         const { authUrl, state } = await res.json();
-        window.open(authUrl, '_blank', 'width=600,height=700,noopener,noreferrer');
+        const popup = window.open(authUrl, '_blank', 'width=600,height=700,noopener,noreferrer');
+        if (!popup) {
+          btn.textContent = 'Sign in';
+          btn.disabled = false;
+          showPanelError('Popup blocked \\u2014 allow popups and try again.');
+          return;
+        }
         btn.textContent = 'Waiting\\u2026';
         const waitRes = await fetch('/api/auth/wait/' + encodeURIComponent(state));
         if (!waitRes.ok) {
